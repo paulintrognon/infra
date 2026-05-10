@@ -1,0 +1,85 @@
+# tasks/system_base.yml
+# Imported by Play 2.
+# apt update/upgrade, base packages, auto-security-updates, fail2ban.
+
+- name: apt — update package index
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600     # skip the network call if updated <1h ago
+
+- name: apt — dist-upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+    autoremove: true
+
+- name: apt — install base packages
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - curl                   # for k3s installer
+      - ca-certificates
+      - gnupg
+      - python3
+      - ufw                    # firewall
+      - fail2ban               # bans brute-force IPs
+      - unattended-upgrades    # automatic security updates
+    state: present
+
+# NOTE: Debian's `unattended-upgrades` package ships an identical 20auto-upgrades
+# by default, so this task is usually a no-op. We write it explicitly so the
+# config intent lives in our repo rather than in package defaults that could
+# drift between Debian releases.
+- name: apt — enable daily unattended security upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+    owner: root
+    group: root
+    mode: "0644"
+
+# Auto-reboot after kernel/libc upgrades that require it. Without this, security
+# patches install but don't take effect until someone manually reboots — easy to
+# forget on a long-lived box. Trade-off: the VPS will reboot itself at 04:00
+# local time on days an upgrade requires it. Acceptable for a hobby box; for a
+# fleet you'd schedule reboots via a maintenance window instead.
+# Drop-in 51-* loads after the package's 50-unattended-upgrades, so our values win.
+- name: apt — enable automatic reboot for unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/51unattended-upgrades-reboot
+    content: |
+      Unattended-Upgrade::Automatic-Reboot "true";
+      Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+      Unattended-Upgrade::Automatic-Reboot-Time "04:00";
+    owner: root
+    group: root
+    mode: "0644"
+
+# fail2ban: we keep Debian's default jail config (sshd is protected out of the
+# box) but override the BANACTION so bans are added as ufw rules rather than to
+# fail2ban's own iptables chains. With this change, `ufw status numbered` shows
+# everything blocked on the box — our manual rules AND fail2ban's bans — in one
+# place. The `00-` prefix ensures our drop-in is read first when fail2ban scans
+# /etc/fail2ban/jail.d/ alphabetically.
+#
+# `banaction_allports` covers the few jails (e.g. recidive, when active) that
+# use the "ban every port" variant; setting both makes the override comprehensive.
+- name: fail2ban — override banaction to use ufw (unifies bans into `ufw status`)
+  ansible.builtin.copy:
+    dest: /etc/fail2ban/jail.d/00-banaction-ufw.conf
+    content: |
+      # Managed by Ansible (giri/infra/ansible/tasks/system_base.yml).
+      [DEFAULT]
+      banaction = ufw
+      banaction_allports = ufw
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart fail2ban
+
+- name: fail2ban — enable and start
+  ansible.builtin.service:
+    name: fail2ban
+    enabled: true
+    state: started

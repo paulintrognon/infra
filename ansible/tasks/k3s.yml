@@ -1,0 +1,47 @@
+# tasks/k3s.yml
+# Imported by Play 2.
+#
+# Two design choices flagged here that you should know about:
+#
+# 1. We use the official `curl https://get.k3s.io | sh` installer. This is
+#    "documented bad practice": the script is fetched and piped to a shell with
+#    no opportunity to inspect or verify it. It's what the k3s project documents,
+#    so it's acceptable on a learning box. For real production you'd: download
+#    the k3s binary directly from a tagged GitHub release, verify its sha256
+#    against the published value, place it at /usr/local/bin/k3s, and write the
+#    systemd unit yourself.
+#
+# 2. We PIN the k3s version via INSTALL_K3S_VERSION (set in Play 2's `vars:`).
+#    Without the pin, a fresh box bootstrapped today and one bootstrapped in 6
+#    months would install different versions silently. To upgrade k3s: bump
+#    `k3s_version` in bootstrap.yml and re-run the playbook — the version-check
+#    task below detects the diff and re-runs the installer (k3s's installer
+#    handles in-place upgrades).
+#
+# `--write-kubeconfig-mode=0644` so the admin user can read /etc/rancher/k3s/k3s.yaml
+# without sudo (acceptable on a single-tenant box — the token IS the secret;
+# file perms aren't really the security boundary).
+
+- name: k3s — read installed version (if any)
+  ansible.builtin.command: k3s --version
+  register: k3s_installed
+  changed_when: false
+  failed_when: false       # not yet installed → empty stdout, install task handles it
+
+- name: k3s — install or upgrade to {{ k3s_version }}
+  ansible.builtin.shell: |
+    curl -sfL https://get.k3s.io | sh -s - server --write-kubeconfig-mode=0644
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_version }}"
+  when: k3s_version not in k3s_installed.stdout
+
+# `kubectl get nodes` prints the STATUS column with surrounding whitespace,
+# e.g. "  Ready  " or "  NotReady  ". Matching ' Ready ' (with both spaces)
+# avoids a substring hit on "NotReady" — don't strip the spaces.
+- name: k3s — wait for the node to be Ready
+  ansible.builtin.command: k3s kubectl get nodes --no-headers
+  register: k3s_nodes
+  retries: 24
+  delay: 5
+  until: k3s_nodes.rc == 0 and ' Ready ' in k3s_nodes.stdout
+  changed_when: false

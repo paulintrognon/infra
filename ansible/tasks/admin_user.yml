@@ -1,0 +1,37 @@
+# tasks/admin_user.yml
+# Imported by Play 1 (runs as root, one-time).
+# Creates the non-root admin user with SSH key access and passwordless sudo.
+
+- name: apt — ensure sudo and python3 are installed
+  # Minimal Debian images may not have sudo. python3 is needed by Ansible itself,
+  # but we ensure it explicitly so this play works on truly minimal targets.
+  ansible.builtin.apt:
+    name:
+      - sudo
+      - python3
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: user — create admin user "{{ admin_user }}"
+  ansible.builtin.user:
+    name: "{{ admin_user }}"
+    groups: sudo
+    shell: /bin/bash
+    create_home: true
+    state: present
+
+- name: user — authorize laptop's SSH key for "{{ admin_user }}"
+  ansible.posix.authorized_key:
+    user: "{{ admin_user }}"
+    key: "{{ laptop_pub_key }}"
+    state: present
+
+- name: user — grant "{{ admin_user }}" passwordless sudo
+  ansible.builtin.copy:
+    dest: "/etc/sudoers.d/90-{{ admin_user }}-nopasswd"
+    content: "{{ admin_user }} ALL=(ALL) NOPASSWD:ALL\n"
+    owner: root
+    group: root
+    mode: "0440"
+    validate: visudo -cf %s    # verify syntax BEFORE replacing the real file

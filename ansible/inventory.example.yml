@@ -1,0 +1,46 @@
+# Ansible inventory — EXAMPLE TEMPLATE.
+#
+# Usage:
+#   cp ansible/inventory.example.yml ansible/inventory.yml
+#   # then edit inventory.yml with your real values
+#
+# This example file IS committed to git.
+# inventory.yml is gitignored (contains your real VPS IP / domain).
+
+all:
+  hosts:
+    vps:
+      # Public IP (or DNS hostname) of your OVH VPS.
+      ansible_host: <YOUR_VPS_IP>
+
+      # The inventory always points at the steady-state user. Play 1 of the
+      # bootstrap playbook overrides this to `debian` for its one-time identity
+      # bootstrap (then auto-skips on subsequent runs once root SSH is locked).
+      # Play 2 uses this value.
+      ansible_user: "{{ admin_user }}"
+
+      # SSH key on your laptop used to authenticate.
+      # Path comes from `laptop_ssh_key` in vars: below — same path is reused by
+      # Play 1 (reads the .pub counterpart to authorize on the VPS).
+      ansible_ssh_private_key_file: "{{ laptop_ssh_key }}"
+
+      # Be explicit about Python on Debian (avoids a deprecation warning).
+      ansible_python_interpreter: /usr/bin/python3
+
+  vars:
+    # Username for the non-root admin account the bootstrap playbook creates.
+    admin_user: <YOUR_USERNAME>
+
+    # Path on YOUR LAPTOP to the SSH private key used to reach the VPS.
+    # The .pub counterpart at this path is what gets authorized for {{ admin_user }}.
+    # Override if you don't use the standard `id_ed25519` filename.
+    laptop_ssh_key: ~/.ssh/id_ed25519
+
+    # Email for Let's Encrypt's ACME account (used by cert-manager).
+    # Renewal-failure notices go here. Doesn't have to match any of your domains.
+    letsencrypt_email: <YOUR_EMAIL>
+
+    # NOTE: app domains are NOT defined here. Each project declares its own hosts
+    # in its Helm values; DNS records (A/CNAME → this VPS IP) are managed in
+    # `terraform/` or manually for now. The cluster hosts many unrelated
+    # domains side by side — there is no "primary" domain.

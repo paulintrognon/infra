@@ -1,0 +1,38 @@
+# tasks/firewall.yml
+# Imported by Play 2.
+#
+# Default-deny inbound, allow only the ports we serve traffic on.
+# We deliberately do NOT open 6443 (k8s API). The cluster API is reached via
+# SSH tunnel from the laptop, so it never touches the public internet.
+
+- name: ufw — default deny incoming
+  community.general.ufw:
+    direction: incoming
+    policy: deny
+
+- name: ufw — default allow outgoing
+  community.general.ufw:
+    direction: outgoing
+    policy: allow
+
+- name: ufw — allow SSH (22/tcp)
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: ufw — allow HTTP (80/tcp)
+  community.general.ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: ufw — allow HTTPS (443/tcp)
+  community.general.ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: ufw — enable firewall
+  community.general.ufw:
+    state: enabled

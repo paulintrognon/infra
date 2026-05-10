@@ -1,0 +1,21 @@
+# Ansible collections this project depends on.
+#
+# A "collection" is just a bundle of modules. ansible-core ships only with
+# `ansible.builtin.*`; common things like SSH key management and ufw rules
+# live in separate community collections that you install once.
+#
+# Install with:
+#   cd ansible/
+#   ansible-galaxy collection install -r requirements.yml
+#
+# Re-run after editing this file.
+
+---
+collections:
+  # ansible.posix.authorized_key — manages ~/.ssh/authorized_keys entries
+  - name: ansible.posix
+    version: ">=1.5.0"
+
+  # community.general.ufw — declarative ufw rules
+  - name: community.general
+    version: ">=8.0.0"

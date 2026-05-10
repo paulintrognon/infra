@@ -1,0 +1,39 @@
+# tasks/ssh_hardening.yml
+# Imported by Play 2.
+#
+# We write a DROP-IN under /etc/ssh/sshd_config.d/ rather than editing the main
+# /etc/ssh/sshd_config. Reason: modern sshd_config has
+# `Include /etc/ssh/sshd_config.d/*.conf` near the top, and sshd uses
+# FIRST-MATCH-WINS for most directives. Cloud images (OVH's Debian included)
+# routinely ship a drop-in like 50-cloud-init.conf containing
+# `PasswordAuthentication yes`, which silently overrides anything we'd put in
+# the main file. The `00-` prefix makes our drop-in alphabetically first → our
+# values win.
+
+- name: ssh — write hardening drop-in (must outrank cloud-init's drop-in)
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    content: |
+      # Managed by Ansible (giri/infra/ansible/tasks/ssh_hardening.yml).
+      # Loaded before other drop-ins (alphabetical order, first-match-wins).
+      PermitRootLogin no
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+    owner: root
+    group: root
+    mode: "0644"
+    validate: sshd -t -f %s    # syntax-check BEFORE replacing the real file
+  notify: Reload sshd
+
+# `sshd -T` prints the EFFECTIVE merged config (after all Includes are resolved).
+# Belt-and-suspenders verification that our drop-in actually wins — if some
+# OTHER drop-in alphabetically before ours re-enabled password auth, we'd rather
+# fail loudly here than ship a silently insecure box.
+- name: ssh — verify hardening is effective in the merged config
+  ansible.builtin.command: sshd -T
+  register: sshd_effective
+  changed_when: false
+  failed_when: >
+    'passwordauthentication no' not in sshd_effective.stdout
+    or 'permitrootlogin no' not in sshd_effective.stdout
+    or 'kbdinteractiveauthentication no' not in sshd_effective.stdout

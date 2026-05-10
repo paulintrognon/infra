@@ -1,0 +1,36 @@
+# tasks/disable_bootstrap_user.yml
+# Imported by Play 2 (runs as {{ admin_user }} with become).
+#
+# Removes the OVH cloud-init `debian` user — the identity Play 1 used to
+# bootstrap the box. By the time this runs, {{ admin_user }} is fully
+# provisioned with SSH key + passwordless sudo, so debian has no remaining
+# purpose.
+#
+# Why this lives in Play 2, not Play 1: Play 1 runs *as* debian. A user can't
+# `userdel` itself mid-session — the deletion has to come from a different
+# identity, which means Play 2 ({{ admin_user }} sudo'd to root).
+#
+# Idempotency: state=absent is a no-op once the user is already gone, so every
+# subsequent run reports changed=0 here.
+#
+# Caveat — cloud-init recreation: cloud-init only creates the default user on
+# first boot. Normal reboots won't bring `debian` back. The exception is if
+# you run `cloud-init clean` or reimage the VPS — debian returns on next boot,
+# and the next playbook run removes it again.
+
+# Footgun guard: Play 2 connects as {{ admin_user }} and the next task deletes
+# `debian`. If admin_user happens to BE "debian", we'd be deleting the user
+# whose SSH session is running this very task — half-broken state guaranteed.
+- name: bootstrap-user — refuse to run if admin_user collides with the bootstrap user
+  ansible.builtin.assert:
+    that: admin_user != 'debian'
+    fail_msg: >-
+      admin_user is set to 'debian', which is the OVH cloud-init bootstrap user
+      this task removes. Pick a different admin_user in inventory.yml.
+
+- name: bootstrap-user — remove the OVH "debian" user and its home directory
+  ansible.builtin.user:
+    name: debian
+    state: absent
+    remove: true   # userdel -r: also delete /home/debian and mail spool
+    force: true    # userdel -f: proceed even if debian were somehow still logged in

@@ -1,0 +1,86 @@
+# ansible/bootstrap.yml
+#
+# Two-play bootstrap of a fresh Debian VPS into a hardened, k8s-ready host.
+#
+# Play 1 (as `debian`) — one-time identity bootstrap: creates the admin user
+#   with your laptop's SSH key + passwordless sudo. The OVH Debian VPS image
+#   ships with a `debian` cloud-init user that has passwordless sudo and your
+#   provisioning SSH key; we use it as the bootstrap identity. On subsequent
+#   runs, `debian` no longer exists (Play 2 removed it), so this play can't
+#   connect; `ignore_unreachable: true` skips it silently and continues with
+#   Play 2.
+#
+# Why override `ansible_user` (not `remote_user`)? Connection variables like
+# `ansible_user` set in inventory ALWAYS win over the `remote_user` play
+# keyword. To override the inventory user for one play only, set the
+# connection variable as a play var — play vars outrank inventory host vars.
+#
+# Play 2 (as `{{ admin_user }}`) — finishes the identity bootstrap (removes the
+#   `debian` user) then runs steady-state host config. The debian-removal task
+#   has to live here, not in Play 1, because debian can't `userdel` itself
+#   without leaving its own SSH session in a degraded state. After first run
+#   the removal is a no-op; everything in Play 2 is idempotent and re-runs
+#   cleanly with `changed=0`.
+#
+# Usage (every run, same command: no inventory editing required):
+#   cd ansible/
+#   ansible-galaxy collection install -r requirements.yml   # one-time
+#   ansible-playbook bootstrap.yml
+
+- name: Play 1 — identity bootstrap (auto-skips after debian SSH is locked down)
+  hosts: vps
+  gather_facts: false
+  become: true                   # debian user has passwordless sudo; we need root for apt/useradd
+  ignore_unreachable: true       # 2nd+ runs: debian is blocked → skip play, don't fail
+
+  vars:
+    # Override the inventory's steady-state user for this play only.
+    # Must be set as a var (not `remote_user`), because connection variables
+    # like ansible_user beat the remote_user keyword.
+    ansible_user: debian
+
+    # Public key authorized for {{ admin_user }}. Read from `laptop_ssh_key` in
+    # inventory (same path Ansible uses to SSH in), with `.pub` appended.
+    # Ansible's `file` lookup expands `~` via os.path.expanduser, so the
+    # inventory value can use `~/...` directly.
+    laptop_pub_key: "{{ lookup('file', laptop_ssh_key + '.pub') }}"
+
+  tasks:
+    - import_tasks: tasks/admin_user.yml
+
+
+- name: Play 2 — finish bootstrap (remove debian) + steady-state config
+  hosts: vps
+  remote_user: "{{ admin_user }}"
+  become: true
+  gather_facts: true
+
+  vars:
+    # Pinned versions of cluster components. Bump deliberately, not by accident.
+    # Without a pin, re-runs over time would install different versions silently.
+    # Check k3s releases: https://github.com/k3s-io/k3s/releases — the `+k3s1`
+    # suffix is the k3s build number (separate from upstream Kubernetes).
+    k3s_version: "v1.31.5+k3s1"
+
+  handlers:
+    # Reload (vs restart) preserves our existing SSH connection — important
+    # because handlers fire mid-play after the SSH/firewall changes.
+    - name: Reload sshd
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+
+    - name: Restart fail2ban
+      ansible.builtin.service:
+        name: fail2ban
+        state: restarted
+
+  tasks:
+    # Finish the identity bootstrap before doing anything else.
+    - import_tasks: tasks/disable_bootstrap_user.yml
+
+    # Steady-state host config (idempotent on every re-run).
+    - import_tasks: tasks/system_base.yml
+    - import_tasks: tasks/ssh_hardening.yml
+    - import_tasks: tasks/firewall.yml
+    - import_tasks: tasks/k3s.yml
