@@ -1,0 +1,32 @@
+# --- Local-only host data & secrets ---
+# Real Ansible inventory (committed: inventory.example.yml only)
+ansible/inventory.yml
+ansible/inventory/
+# Ansible Vault files (if we add encrypted secrets)
+*.vault.yml
+# Kubeconfig — never commit; it's full cluster access
+kubeconfig
+*.kubeconfig
+
+# --- OpenTofu / Terraform ---
+# Local state, plans, and the .terraform working dir
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+# Real variable files (committed: *.tfvars.example only)
+terraform.tfvars
+*.auto.tfvars
+!*.tfvars.example
+# NOTE: .terraform.lock.hcl SHOULD be committed — it pins provider versions.
+
+# --- Helm ---
+# Vendored chart dependencies + packaged charts
+charts/**/charts/
+*.tgz
+
+# --- Editor / OS noise ---
+.DS_Store
+.idea/
+*.swp
+*.swo
