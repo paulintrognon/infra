@@ -1,0 +1,26 @@
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: plouf-plouf
+  spec:
+    replicas: 1
+    selector:
+      matchLabels:
+        app: plouf-plouf
+    template:
+      metadata:
+        labels:
+          app: plouf-plouf
+      spec:
+        containers:
+          - name: plouf-plouf
+            image: ghcr.io/paulintrognon/plouf-plouf:5.5.0
+            ports:
+              - containerPort: 3000
+            resources:
+              requests:
+                cpu: 100m
+                memory: 128Mi
+              limits:
+                cpu: 500m
+                memory: 512Mi

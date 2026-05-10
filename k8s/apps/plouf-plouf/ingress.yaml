@@ -1,0 +1,17 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: plouf-plouf
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: plouf-plouf.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: plouf-plouf
+                port:
+                  number: 80
