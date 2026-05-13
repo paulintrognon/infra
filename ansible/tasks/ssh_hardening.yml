@@ -14,7 +14,7 @@
   ansible.builtin.copy:
     dest: /etc/ssh/sshd_config.d/00-hardening.conf
     content: |
-      # Managed by Ansible (giri/infra/ansible/tasks/ssh_hardening.yml).
+      # Managed by Ansible (ansible/tasks/ssh_hardening.yml).
       # Loaded before other drop-ins (alphabetical order, first-match-wins).
       PermitRootLogin no
       PasswordAuthentication no
