@@ -1,5 +1,6 @@
 {
   "cSpell.words": [
+    "direnv",
     "letsencrypt",
     "nopasswd",
     "passwordless",
@@ -7,6 +8,7 @@
     "paulintrognon",
     "plouf",
     "reimage",
+    "Scaleway",
     "userdel"
   ]
 }
