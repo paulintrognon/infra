@@ -1,6 +1,15 @@
 terraform {
   required_version = ">= 1.11.0"
 
+  # External plugins tofu uses to manage resources. Pinned here, locked by exact
+  # version + checksum in .terraform.lock.hcl so `tofu init` is reproducible.
+  required_providers {
+    helm = {
+      source  = "hashicorp/helm"
+      version = "~> 3.0"
+    }
+  }
+
   # State lives in Scaleway Object Storage (S3-compatible).
   # OpenTofu's "s3" backend works against any S3-compatible service
   # when paired with the right "this isn't actually AWS" flags below.
