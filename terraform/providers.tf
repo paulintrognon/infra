@@ -43,3 +43,11 @@ terraform {
     use_lockfile = true
   }
 }
+
+provider "helm" {
+  # Cluster connection auto-discovered from the KUBECONFIG env var,
+  # which is loaded by direnv from the repo-root .envrc (see ../.envrc).
+  # No config_path / config_context pinned here on purpose — keeps
+  # providers.tf portable (no laptop-specific paths in committed HCL).
+  kubernetes = {}
+}

@@ -1,6 +1,9 @@
 {
   "cSpell.words": [
+    "crds",
     "direnv",
+    "envrc",
+    "KUBECONFIG",
     "letsencrypt",
     "nopasswd",
     "passwordless",
