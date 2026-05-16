@@ -21,7 +21,6 @@ cp ansible/inventory.example.yml ansible/inventory.yml
 Then open ansible/inventory.yml in your editor and replace:
 - `<YOUR_VPS_IP>` → VPS IP provided by OVH
 - `<YOUR_USERNAME>` → Username for the non-root admin account the bootstrap playbook creates.
-- `<YOUR_EMAIL>` → an email you control (Let's Encrypt sends renewal-failure warnings here)
   
 _**Note:** inventory.yml is gitignored, so real values never get committed._
 

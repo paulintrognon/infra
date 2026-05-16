@@ -5,7 +5,7 @@ metadata:
 spec:
   acme:
     server: https://acme-staging-v02.api.letsencrypt.org/directory
-    email: contact@paulintrognon.fr                          # same as vps_admin_email in inventory.yml
+    email: contact@paulintrognon.fr
     privateKeySecretRef:
       name: letsencrypt-staging-account-key
     solvers:

@@ -36,10 +36,6 @@ all:
     # Override if you don't use the standard `id_ed25519` filename.
     laptop_ssh_key: ~/.ssh/id_ed25519
 
-    # Email for Let's Encrypt's ACME account (used by cert-manager).
-    # Renewal-failure notices go here. Doesn't have to match any of your domains.
-    letsencrypt_email: <YOUR_EMAIL>
-
     # NOTE: app domains are NOT defined here. Each project declares its own hosts
     # in its Helm values; DNS records (A/CNAME → this VPS IP) are managed in
     # `terraform/` or manually for now. The cluster hosts many unrelated
