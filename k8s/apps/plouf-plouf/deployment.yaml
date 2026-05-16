@@ -4,6 +4,20 @@ metadata:
   name: plouf-plouf
 spec:
   replicas: 1
+
+  # Rollout strategy
+  #
+  # RollingUpdate at replicas: 1:
+  #   - maxSurge: 1        → during a release, briefly run 2 pods (old + new).
+  #   - maxUnavailable: 0  → never fewer than 1 ready pod.
+  # Combined: zero-downtime rollouts as long as the new pod's readiness probe
+  # is honest
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
   selector:
     matchLabels:
       app: plouf-plouf
