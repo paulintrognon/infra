@@ -1,0 +1,27 @@
+# k8s/system/traefik/helmchartconfig.yaml
+#
+# This sends a 301 redirect to HTTPS for every request on :80, cluster-wide,
+# for every Ingress (now and future). `permanent: true` makes it a 301
+# (browsers cache it) instead of a 302 (they don't).
+#
+# ACME challenges get redirected too. That's fine: Let's Encrypt follows
+# redirects and skips cert checks during validation, so renewals still work.
+#
+# Traefik comes bundled with k3s. k3s installs and re-applies it from a
+# built-in chart on its own, so `helm upgrade traefik` doesn't stick —
+# k3s would revert it on the next reconcile. The supported way to override
+# values is to apply a HelmChartConfig: k3s merges spec.valuesContent into
+# the chart's values on every reconcile.
+
+apiVersion: helm.cattle.io/v1
+kind: HelmChartConfig
+metadata:
+  name: traefik
+  namespace: kube-system
+spec: 
+  valuesContent: |-
+    ports:
+      web:
+        redirectTo:
+          port: websecure
+          permanent: true

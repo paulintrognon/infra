@@ -3,6 +3,7 @@
     "crds",
     "direnv",
     "envrc",
+    "helmchartconfig",
     "KUBECONFIG",
     "letsencrypt",
     "nopasswd",
@@ -12,6 +13,7 @@
     "plouf",
     "reimage",
     "Scaleway",
-    "userdel"
+    "userdel",
+    "websecure"
   ]
 }
