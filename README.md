@@ -74,7 +74,7 @@ What the flags do:
 Then in a separate terminal, trust the repo-root `.envrc` (which exports `KUBECONFIG` and `KUBE_CONFIG_PATH` pointing at the kubeconfig) and verify cluster reachability:
 
 ```bash
-cd ~/code/paulin/infra
+cd infra
 direnv allow .
 kubectl get nodes
 ```
