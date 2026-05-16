@@ -1,76 +1,94 @@
 # Infra
 
-Single Debian VPS on OVH → bootstrapped to single-node k3s + Helm + OpenTofu. Hosts my personal TypeScript projects (Next.js, NestJS, static).
+Single Debian VPS on OVH → bootstrapped to single-node k3s + Helm + OpenTofu. Hosts my personal TypeScript projects.
 
 Personal, opinionated. Public for reference. MIT — no support.
 
+## Contents
+
+- [What's where](#whats-where)
+- [Prerequisites](#prerequisites)
+- [Setting up from scratch](#setting-up-from-scratch)
+  - [1. Local inventory](#1-local-inventory)
+  - [2. Copy local SSH key to the VPS](#2-copy-local-ssh-key-to-the-vps)
+  - [3. Bootstrap the VPS](#3-bootstrap-the-vps)
+  - [4. Local kubectl access](#4-local-kubectl-access)
+  - [5. OpenTofu state backend](#5-opentofu-state-backend)
+  - [6. Install cluster system charts](#6-install-cluster-system-charts)
+  - [7. Apply the cert-manager ClusterIssuers](#7-apply-the-cert-manager-clusterissuers)
+  - [8. DNS for your app](#8-dns-for-your-app)
+  - [9. Deploy plouf-plouf](#9-deploy-plouf-plouf)
+- [Day-2 operations](#day-2-operations)
+  - [Update an app's image](#update-an-apps-image)
+  - [Upgrade cert-manager](#upgrade-cert-manager)
+  - [Upgrade k3s](#upgrade-k3s)
+
+## What's where
+
+- `ansible/` — VPS bootstrap (runs locally to configure remote server).
+- `terraform/` — cluster-level system charts via OpenTofu (cert-manager, ...).
+- `k8s/system/` — raw cluster manifests applied with `kubectl` (cert-manager ClusterIssuers).
+- `k8s/apps/` — per-app manifests, one folder per app.
+
 ## Prerequisites
 
-- **Ansible, kubectl, Helm** — VPS provisioning + cluster ops
-- **OpenTofu ≥ 1.11** — infrastructure-as-code for DNS records, system Helm releases, etc. Use OpenTofu, not HashiCorp Terraform
-- **direnv** — auto-loads the Scaleway Object Storage credentials that back the tofu state file (loaded only when you `cd terraform/`, never globally). After installing, hook it into your shell: `eval "$(direnv hook bash)"` in `~/.bashrc` (or `direnv hook zsh` in `~/.zshrc`). The actual credentials file is set up in Step 5 below.
+- An OVH VPS running Debian, reachable on SSH as the default `debian` cloud-init user.
+- A local SSH key (defaults to `~/.ssh/id_ed25519`).
+- Local tools: `ansible`, `kubectl`, `tofu` (≥ 1.11), `direnv`.
 
-## Setting up
+Hook `direnv` into your shell once: add `eval "$(direnv hook bash)"` to `~/.bashrc` (or `direnv hook zsh` to `~/.zshrc`).
 
-### Step 1: Local inventory file
+## Setting up from scratch
+
+### 1. Local inventory
 
 ```bash
 cp ansible/inventory.example.yml ansible/inventory.yml
 ```
 
-Then open ansible/inventory.yml in your editor and replace:
-- `<YOUR_VPS_IP>` → VPS IP provided by OVH
-- `<YOUR_USERNAME>` → Username for the non-root admin account the bootstrap playbook creates.
-  
-_**Note:** inventory.yml is gitignored, so real values never get committed._
+Edit `ansible/inventory.yml`, replace `<VPS_IP>` and `<USERNAME>`. The file is gitignored.
 
-### Step 2: Copy your SSH key to the VPS
+### 2. Copy local SSH key to the VPS
 
 ```bash
-ssh-copy-id -i ~/.ssh/id_ed25519.pub debian@<YOUR_VPS_IP>
+ssh-copy-id -i ~/.ssh/id_ed25519.pub debian@<VPS_IP>
 ```
 
-_**Note:** prompts for the `debian` user's password once (set during OVH provisioning)._
+Prompts for the `debian` user's password (set during OVH provisioning).
 
-### Step 3: Run the bootstrap playbook
+### 3. Bootstrap the VPS
 
 ```bash
 cd ansible/
-ansible-galaxy collection install -r requirements.yml   # one-time, installs the Ansible collections we depend on
+ansible-galaxy collection install -r requirements.yml   # one-time
 ansible-playbook bootstrap.yml
 ```
 
-_**Note:** the playbook is idempotent — re-run anytime to reconcile the VPS to the desired state (e.g. after bumping `k3s_version` in `bootstrap.yml` to upgrade k3s)._
+Idempotent — re-run anytime to reconcile.
 
-### Step 4: Set up local kubectl access
+**Note:** the VPS auto-reboots at 04:00 local time when an unattended security upgrade requires it. (see `ansible/tasks/system_base.yml`)
 
-Bootstrap (Step 3) put k3s on the VPS, but the API server is intentionally bound to `127.0.0.1` on the VPS and not exposed publicly — ufw blocks port 6443 from the internet. To reach the API from your laptop (for `kubectl`, and later for OpenTofu's helm provider in Step 5), we keep the control plane off the public network and forward our local `:6443` to the VPS's loopback via SSH. A tunnel needs to be open before any `kubectl`/`tofu` work, but the K8s API never gets a public listener — good security posture for a long-lived single-VPS setup, and no TLS SAN gymnastics required.
+### 4. Local kubectl access
 
-Pull the k3s-shipped kubeconfig down to your laptop:
+The k8s API is bound to `127.0.0.1` on the VPS (port 6443 is blocked at the firewall). Reach it via an SSH tunnel.
+
+Copy the kubeconfig down:
 
 ```bash
 mkdir -p ~/.kube
-ssh <YOUR_USERNAME>@<YOUR_VPS_IP> "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/paulin-config
+ssh <USERNAME>@<VPS_IP> "sudo cat /etc/rancher/k3s/k3s.yaml" > ~/.kube/paulin-config
 chmod 600 ~/.kube/paulin-config
 ```
 
-The `server: https://127.0.0.1:6443` line in the file stays as-is — that's the loopback the tunnel forwards to. The filename `paulin-config` is what the repo's `.envrc` expects; if you change it, edit `.envrc` to match.
+The filename `paulin-config` is what the repo's `.envrc` expects.
 
-Open the tunnel (keep this terminal window open — closing it closes the tunnel):
+Open the tunnel (leave this terminal open — closing it closes the tunnel):
 
 ```bash
-ssh -N -L 6443:127.0.0.1:6443 -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 <YOUR_USERNAME>@<YOUR_VPS_IP>
+ssh -N -L 6443:127.0.0.1:6443 -o ExitOnForwardFailure=yes -o ServerAliveInterval=60 <USERNAME>@<VPS_IP>
 ```
 
-What the flags do:
-- `-L 6443:127.0.0.1:6443` — forward your laptop's `localhost:6443` to the VPS's `127.0.0.1:6443` (where k3s listens).
-- `-N` — don't run a remote command, just hold the forward open.
-- `-o ExitOnForwardFailure=yes` — exit immediately if `:6443` can't be bound locally (e.g. an existing tunnel already holds it), instead of "succeeding" with a silently broken forward.
-- `-o ServerAliveInterval=60` — send a keepalive probe every 60s, so dropped connections (network blips, NAT timeouts) get detected promptly instead of leaving a zombie tunnel.
-
-**The tunnel does not survive reboots or terminal close** — re-open it whenever you need to reach the cluster.
-
-Then in a separate terminal, trust the repo-root `.envrc` (which exports `KUBECONFIG` and `KUBE_CONFIG_PATH` pointing at the kubeconfig) and verify cluster reachability:
+In a separate terminal, verify:
 
 ```bash
 cd infra
@@ -78,28 +96,28 @@ direnv allow .
 kubectl get nodes
 ```
 
-Expected: the VPS shows up as `Ready`. If kubectl hangs, the tunnel isn't open (or its SSH session died) — re-run the `ssh -N -L` command above.
+The VPS should show as `Ready`.
 
-_**Note:** `direnv` deactivates `KUBECONFIG`/`KUBE_CONFIG_PATH` when you `cd` out of the repo, so `kubectl` never accidentally targets this cluster from an unrelated shell. If you SSH to this VPS frequently, you can have the tunnel auto-open on every interactive SSH session by adding `LocalForward 6443 127.0.0.1:6443` to the relevant `Host` entry in `~/.ssh/config`._
+**Warning:** every `kubectl` and `tofu` command below requires the tunnel. Hanging commands usually mean the tunnel died.
 
-### Step 5: Set up the OpenTofu state backend
+### 5. OpenTofu state backend
 
-The tofu state file lives in **Scaleway Object Storage** (bucket `paulin-infra-tfstate`, region `fr-par`). Your shell needs Scaleway API credentials to talk to it — `direnv` loads them only when you `cd terraform/`, never globally.
+State lives in Scaleway Object Storage (bucket `paulin-infra-tfstate`, region `fr-par`). Credentials load via `direnv` only inside `terraform/`.
 
-Create the credentials directory outside the repo (so the file can never be committed):
+Create the credentials file outside the repo:
 
 ```bash
 mkdir -p ~/.config/paulin-infra
 ```
 
-Open `~/.config/paulin-infra/scaleway.env` in your editor and add:
+Create `~/.config/paulin-infra/scaleway.env`:
 
 ```bash
-export AWS_ACCESS_KEY_ID="SCW..."        # from your password manager
-export AWS_SECRET_ACCESS_KEY="..."       # from your password manager
+export AWS_ACCESS_KEY_ID="SCW..."
+export AWS_SECRET_ACCESS_KEY="..."
 ```
 
-Lock down its permissions, trust the project's `.envrc`, and initialize tofu:
+The `AWS_*` names are correct — OpenTofu's S3 backend works against any S3-compatible service.
 
 ```bash
 chmod 600 ~/.config/paulin-infra/scaleway.env
@@ -109,4 +127,84 @@ direnv allow .
 tofu init
 ```
 
-_**Note:** the `AWS_*` env var names are correct — OpenTofu's S3 backend uses the AWS SDK regardless of which S3-compatible provider (Scaleway, here) hosts the bucket. To rotate keys, regenerate them in Scaleway console → IAM → Applications → `paulin-infra-tofu` → API Keys, then update the env file (direnv reloads on next prompt)._
+### 6. Install cluster system charts
+
+```bash
+cd terraform/
+tofu apply
+```
+
+Installs cert-manager (TLS automation) into the `cert-manager` namespace. Type `yes` to confirm.
+
+Verify:
+
+```bash
+kubectl get pods -n cert-manager
+```
+
+Three pods, all `Running`. The webhook takes ~30s.
+
+### 7. Apply the cert-manager ClusterIssuers
+
+```bash
+kubectl apply -f k8s/system/cert-manager/
+kubectl get clusterissuers
+```
+
+Both `letsencrypt-staging` and `letsencrypt-prod` should show `READY=True`.
+
+**Note:** use `letsencrypt-staging` while testing a new Ingress. Real Let's Encrypt rate-limits at 5 duplicate certs per registered domain per week.
+
+### 8. DNS for your app
+
+Create an A record at your registrar:
+
+```
+<your-app-domain>   A   <VPS_IP>
+```
+
+For OVH: Manager → Web Cloud → Domain → DNS Zone. Propagation can take a few minutes.
+
+### 9. Deploy plouf-plouf
+
+```bash
+kubectl apply -f k8s/apps/plouf-plouf/
+kubectl rollout status deploy/plouf-plouf
+curl -i https://plouf-plouf.fr/api/health
+```
+
+Expect `HTTP/2 200`. First request can take ~1 minute while cert-manager issues the cert.
+
+## Day-2 operations
+
+### Update an app's image
+
+Edit `image:` in `k8s/apps/<app>/deployment.yaml`, then:
+
+```bash
+kubectl apply -f k8s/apps/<app>/
+kubectl rollout status deploy/<app>
+```
+
+Zero-downtime rolling update.
+
+### Upgrade cert-manager
+
+Edit `version` in `terraform/cert-manager.tf`, then:
+
+```bash
+cd terraform/
+tofu plan      # review what changes
+tofu apply
+```
+
+### Upgrade k3s
+
+Edit `k3s_version` in `ansible/bootstrap.yml`, then re-run the bootstrap:
+
+```bash
+cd ansible/
+ansible-playbook bootstrap.yml
+```
+
+In-place upgrade via the k3s installer.

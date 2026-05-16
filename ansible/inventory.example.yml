@@ -11,7 +11,7 @@ all:
   hosts:
     vps:
       # Public IP (or DNS hostname) of your OVH VPS.
-      ansible_host: <YOUR_VPS_IP>
+      ansible_host: <VPS_IP>
 
       # The inventory always points at the steady-state user. Play 1 of the
       # bootstrap playbook overrides this to `debian` for its one-time identity
@@ -29,7 +29,7 @@ all:
 
   vars:
     # Username for the non-root admin account the bootstrap playbook creates.
-    admin_user: <YOUR_USERNAME>
+    admin_user: <USERNAME>
 
     # Path on YOUR LAPTOP to the SSH private key used to reach the VPS.
     # The .pub counterpart at this path is what gets authorized for {{ admin_user }}.
