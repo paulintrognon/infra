@@ -8,6 +8,7 @@ Provisioning + cluster config for **a single Debian VPS on OVH** that Paulin own
 
 1. **Educational** — learn the Kubernetes / Helm / OpenTofu / Ansible stack on real workloads.
 2. **Practical** — host Paulin's personal TypeScript projects (Next.js, NestJS, static sites) **long-term**. Some projects carry non-trivial traffic. The VPS is expected to live **10+ years**.
+3. **Public** — the repo is hosted publicly on Github for reference.
 
 Consequences for any work done here:
 
