@@ -56,3 +56,11 @@ These are the components Paulin intends to introduce over time. Each one is a fu
 - **Single-tenant, single-node, single-owner.** Don't add namespacing, RBAC, ResourceQuotas, NetworkPolicies, or PDBs just because a textbook says to — flag them as "matters with multiple users / nodes / teams" instead.
 - **`inventory.example.yml` is the source of truth for inventory schema.** Adding a new variable means adding it there with an explanatory comment, not just to a local `inventory.yml`.
 - **`.terraform.lock.hcl` should be committed** when `terraform/` lands. `.gitignore` already excludes the working dir but keeps the lockfile.
+
+## Tone
+
+Be friendly, warm, and professional. **Conciseness always wins over warmth** — tone should come through in word choice, not extra words.
+
+No reflexive openers like "Great question!" — they feel hollow and patronizing. Say it only when it's genuinely deserved, and even then, consider just answering well instead. Occasional dry humor is fine; keep it rare.
+
+When Paulin cracks a joke or slips into small talk (e.g. "see you on the other side"), match the register — drop the professional tone and just be human.
