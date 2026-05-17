@@ -1,0 +1,44 @@
+# Redirects www.paulintrognon.fr → paulintrognon.fr by attaching the global
+# `www-to-apex` Middleware (in kube-system) to this Ingress's Traefik
+# router. The Middleware short-circuits with a 301 before the backend is
+# ever reached.
+#
+# Why a separate Ingress (and not just an extra host on the apex Ingress)?
+# Functionally either works — the middleware's regex `^https?://www\.(.*)`
+# wouldn't match apex requests anyway, so a shared router would be a no-op
+# on apex traffic. We split them for two non-functional reasons:
+#   1. Independent cert lifecycle. A renewal failure on a SAN cert covering
+#      both hosts would take down both at once. Separate certs isolate the
+#      blast radius.
+#   2. Single intent per file. This Ingress *redirects*; the apex one
+#      *serves*. Easier to read, and `rm` cleanly removes the redirect
+#      later without touching the app's serving config.
+#
+# `backend.service` is required by the Ingress schema even though the
+# Middleware guarantees it's never reached. Points at the apex Service
+# by convention.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paulintrognon-fr-www
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: kube-system-www-to-apex@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - www.paulintrognon.fr
+      secretName: paulintrognon-fr-www-tls
+  rules:
+    - host: www.paulintrognon.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: paulintrognon-fr
+                port:
+                  number: 80

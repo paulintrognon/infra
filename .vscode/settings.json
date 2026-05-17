@@ -5,6 +5,7 @@
     "envrc",
     "helmchartconfig",
     "KUBECONFIG",
+    "kubernetescrd",
     "letsencrypt",
     "nopasswd",
     "passwordless",
