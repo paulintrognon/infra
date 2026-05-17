@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: paulintrognon-fr
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+spec:
+  ingressClassName: traefik
+  tls:
+  - hosts:
+      - paulintrognon.fr
+    secretName: paulintrognon-fr-tls
+  rules:
+    - host: paulintrognon.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: paulintrognon-fr
+                port:
+                  number: 80

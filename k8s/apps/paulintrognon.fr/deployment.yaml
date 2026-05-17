@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paulintrognon-fr
+spec:
+  replicas: 1
+
+  # Rollout strategy
+  #
+  # RollingUpdate at replicas: 1:
+  #   - maxSurge: 1        → during a release, briefly run 2 pods (old + new).
+  #   - maxUnavailable: 0  → never fewer than 1 ready pod.
+  # Combined: zero-downtime rollouts as long as the new pod's readiness probe
+  # is honest
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  selector:
+    matchLabels:
+      app: paulintrognon-fr
+  template:
+    metadata:
+      labels:
+        app: paulintrognon-fr
+    spec:
+      containers:
+        - name: paulintrognon-fr
+          image: ghcr.io/paulintrognon/paulintrognon.fr:5.0.0
+          # Explicit so the default rule (Always for :latest, IfNotPresent for
+          # pinned tags) isn't something a reader has to remember.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # Readiness — "should traffic be routed to this pod NOW?"
+          # Failure removes the pod from the Service's endpoints (no traffic);
+          # the pod itself is NOT killed. Lets rolling deploys wait until
+          # Next.js is actually serving before cutting traffic over — without
+          # this, the Service would route to the not-yet-ready process and
+          # serve 502s for 2–5s on every release.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 5     # Next.js boots in ~2–5s
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3        # 3 fails × 10s = 30s before pulling traffic (but not restarting)
+
+          # Liveness — "is this pod fundamentally broken and needs a restart?"
+          # Failure KILLS the container (Deployment's ReplicaSet recreates it).
+          # Catches wedged Node processes that hold the socket but don't serve.
+          # Tuned more forgivingly than readiness because restarting a pod that
+          # was about to recover is worse than waiting an extra 30s.
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+            initialDelaySeconds: 15    # generous startup grace
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3        # 3 × 20s = 60s of failure before restart

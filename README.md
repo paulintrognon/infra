@@ -17,7 +17,7 @@ Personal, opinionated. Public for reference. MIT — no support.
   - [6. Install cluster system charts](#6-install-cluster-system-charts)
   - [7. Apply the cert-manager ClusterIssuers](#7-apply-the-cert-manager-clusterissuers)
   - [8. DNS for your app](#8-dns-for-your-app)
-  - [9. Deploy plouf-plouf](#9-deploy-plouf-plouf)
+  - [9. Deploy the apps](#9-deploy-the-apps)
 - [Day-2 operations](#day-2-operations)
   - [Update an app's image](#update-an-apps-image)
   - [Upgrade cert-manager](#upgrade-cert-manager)
@@ -165,15 +165,14 @@ Create an A record at your registrar:
 
 For OVH: Manager → Web Cloud → Domain → DNS Zone. Propagation can take a few minutes.
 
-### 9. Deploy plouf-plouf
+### 9. Deploy the apps
 
 ```bash
-kubectl apply -f k8s/apps/plouf-plouf/
-kubectl rollout status deploy/plouf-plouf
-curl -i https://plouf-plouf.fr/api/health
+kubectl apply -R -f k8s/apps/
+kubectl rollout status deploy --all
 ```
 
-Expect `HTTP/2 200`. First request can take ~1 minute while cert-manager issues the cert.
+Then `curl -i https://<each-app-domain>/api/health` — expect `HTTP/2 200`. First request to a newly-deployed app can take ~1 minute while cert-manager issues the cert.
 
 ## Day-2 operations
 
