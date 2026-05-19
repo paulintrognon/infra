@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: paulintrognon-fr
+  labels:
+    managed-by: argocd
 spec:
   replicas: 1
 
