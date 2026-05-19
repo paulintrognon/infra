@@ -1,36 +1,35 @@
 # The Argo CD root Application.
-# 
+#
 # This is the file that does the actual work of the chart. Everything else
-# (Chart.yaml, the folder layout) is just paperwork so Helm will install it.
+# (Chart.yaml, the folder layout) is packaging so Helm will install it.
 #
 # WHAT IS AN "APPLICATION"?
-# When we installed Argo CD via terraform/argocd.tf, the install added a few
-# new resource KINDS to the cluster — most importantly `Application`. These
-# are called "Custom Resources" (CRs): resource types that aren't built into
-# Kubernetes (like Pod or Service are) but are added by an operator.
+# `Application` is a Kubernetes Custom Resource (CR) defined by Argo CD when
+# it's installed on the cluster. CRs are resource types that aren't built
+# into Kubernetes (like Pod or Service are) — they're added by an operator
+# running in the cluster.
 #
-# An `Application` is Argo CD's primary unit of work. It says, in plain
-# English: "make folder X in repo Y look like the cluster." Argo CD then
-# polls that folder every ~3 minutes and reconciles any drift.
+# An Application is Argo CD's primary unit of work. It says, in plain
+# English: "make folder X in repo Y look like the cluster." Argo CD polls
+# the source every ~3 minutes (or immediately if a webhook tells it to)
+# and reconciles any drift it finds.
 #
-# THE ROOT APP (this file) IS SPECIAL.
-# This Application's "folder X" is `argocd/apps/` in this repo — which
-# itself contains MORE Application YAMLs, one per workload
-# (plouf-plouf, paulintrognon.fr, etc).
+# THE ROOT APPLICATION (this file) IS SPECIAL.
+# Its source folder (`argocd/apps/`) contains MORE Application YAMLs, one
+# per workload (plouf-plouf, paulintrognon.fr, etc).
 #
-# So the cascade looks like:
+# So the cascade is:
 #   Tofu  → creates  this root Application
 #   root  → creates  the child Applications under argocd/apps/
 #   child → creates  the actual workload (Deployment + Service + Ingress)
 #
-# Two levels of Argo CD indirection. Why not flat? Because adding a new app
-# later is then a one-file change (drop a YAML in argocd/apps/) rather than
-# touching Tofu every time.
+# Two levels of Argo CD indirection. Why not flat? Adding a new app becomes
+# a one-file change (drop a YAML in argocd/apps/) rather than touching Tofu
+# every time.
 
 apiVersion: argoproj.io/v1alpha1
-# The API group Argo CD registered when we installed it. `v1alpha1` looks
-# pre-release but is actually Argo CD's stable production API — they never
-# bumped it. Don't be alarmed.
+# Argo CD's API group. `v1alpha1` looks pre-release but is Argo CD's stable
+# production API — they never bumped it. Don't be alarmed.
 
 kind: Application
 
@@ -39,18 +38,16 @@ metadata:
   # What this Application shows up as in the Argo CD UI / CLI.
 
   namespace: argocd
-  # Application CRs MUST live in Argo CD's own namespace (`argocd`), because
-  # by default Argo CD only watches Applications in the namespace it runs in.
-  # The workload itself can live in any namespace — that's a different field
-  # (spec.destination.namespace, below in the child Apps).
+  # Application CRs live in `argocd` because that's the namespace Argo CD's
+  # controller watches for them by default. NOT where the workload runs —
+  # that's `spec.destination.namespace` (below in the child Apps' files).
 
 spec:
   project: default
-  # Argo CD has its own "Project" concept for grouping/permissioning
-  # Applications (which repos can be sourced from, which namespaces can be
+  # Argo CD's "Project" concept groups Applications and scopes what each
+  # can do (which repos can be sourced from, which namespaces can be
   # deployed to, etc.). `default` is the built-in catch-all that allows
-  # everything. Single-tenant single-owner setup → no reason to define our
-  # own Project yet.
+  # everything — fine for a single-tenant cluster.
 
   source:
     # "WHERE does the truth live?"
@@ -63,35 +60,33 @@ spec:
 
     path: argocd/apps
     # The folder inside the repo to sync. Every YAML file in here becomes
-    # something Argo CD applies to the cluster — which means every child
-    # Application gets created automatically the moment this root exists.
+    # something Argo CD applies to the cluster — every child Application
+    # gets created automatically the moment this root exists.
 
     directory:
       recurse: true
       # Also pick up files in sub-folders of argocd/apps/. Harmless if there
-      # are none; gives us room to add structure later (e.g.
-      # argocd/apps/staging/...) without touching the root.
+      # are none; allows structuring later (e.g. argocd/apps/staging/...)
+      # without touching the root.
 
   destination:
     # "WHERE do the resources land?"
     server: https://kubernetes.default.svc
-    # The in-cluster Kubernetes API address. Reads as "the cluster I'm
-    # running in." We only have one cluster, so it's always this magic
-    # string. Multi-cluster setups would have multiple destinations.
+    # The in-cluster Kubernetes API address — reads as "the cluster I'm
+    # running in." Single-cluster setups always use this magic string;
+    # multi-cluster setups add a destination per cluster.
 
     namespace: argocd
     # The namespace the CHILD APPLICATIONS get created in. Same reason as
-    # metadata.namespace above: child Application CRs must live in `argocd`.
-    # Where each child's actual workload runs is decided in each child's
-    # own spec.destination.namespace.
+    # `metadata.namespace` above: child Application CRs live in `argocd`.
+    # Where each child's workload runs is decided by the child's own
+    # `spec.destination.namespace`.
 
   syncPolicy:
     automated:
-      # Auto-sync IS enabled for the root, because all the root does is
-      # create/update Application CRs — low blast radius. The CHILDREN
-      # (e.g. plouf-plouf.yaml) will start with manual syncPolicy so we
-      # can run `argocd app diff` and confirm zero drift before they
-      # touch any real workload.
+      # Auto-sync is enabled for the root because all it does is create or
+      # update Application CRs — low blast radius. Children manage real
+      # workloads and choose their own syncPolicy independently.
       prune: true
       # If a child Application's YAML disappears from argocd/apps/, also
       # delete it from the cluster. Without this, removing a file in git

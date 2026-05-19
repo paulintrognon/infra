@@ -6,23 +6,22 @@
 # app: Deployment + Service + Ingress + ConfigMap + ...) and a `values.yaml`
 # file letting users customize the install (replicas, image tag, etc.).
 #
-# OUR chart is a one-trick pony: it has a SINGLE template — the Argo CD root
-# Application — and no customizable values. The whole point of wrapping it as
-# a chart is that Tofu's Helm plugin (the only Kubernetes-aware plugin we have
-# installed in providers.tf) only knows how to install *charts*. So we put our
-# one YAML in chart clothing. ~30 seconds of scaffolding to avoid adding a new
-# plugin we'd then have to maintain for 10 years.
+# THIS CHART is a one-trick pony: it has a SINGLE template (the Argo CD root
+# Application) and no customizable values. It exists because Tofu's helm_release
+# is the mechanism that installs the resource, and helm_release only installs
+# charts — so the YAML needs chart-shape. The "chart" framing is purely
+# packaging; there's no application logic in the templates.
 #
 # This file's job is to satisfy Helm's "is this a valid chart?" sanity check.
 # Without it, `helm install` (and therefore Tofu's helm_release) refuses to
 # touch the folder.
 
 apiVersion: v2
-# Helm chart format version. v2 = Helm 3 (current). v1 was Helm 2, which is
-# end-of-life. Always v2 for anything written today.
+# Helm chart format version. v2 is the Helm 3 format. v1 was Helm 2, which
+# is end-of-life.
 
 name: argocd-root-app
-# Chart identifier. Used by Helm internally and shown if you ever run
+# Chart identifier. Used by Helm internally and shown by commands like
 # `helm list`. Doesn't have to match the folder name but conventionally does.
 
 description: Bootstrap chart whose only template is the Argo CD root Application.
@@ -30,18 +29,16 @@ description: Bootstrap chart whose only template is the Argo CD root Application
 
 type: application
 # Two valid values:
-#   - "application" → installs workloads (this is us).
+#   - "application" → installs workloads (what this is).
 #   - "library"     → reusable templates other charts pull from, never
-#                     installed on its own. Not what we want.
+#                     installed on its own.
 
 version: 0.1.0
 # The CHART version (this folder's version, not "the version of the thing
-# inside"). Bump this when YOU change the chart's contents. Helm uses
-# semver here.
+# inside"). Bump this when you change the chart's contents. Helm uses semver.
 
 appVersion: "1.0.0"
 # The version of the APP the chart installs. For a normal chart like
 # cert-manager, this would be the cert-manager release (e.g. "v1.20.2").
-# Our chart doesn't install an "app" — it installs one config resource —
-# so this field is required-but-meaningless. Pick any placeholder and
-# forget it exists.
+# This chart doesn't install an "app" in that sense — it installs one
+# config resource — so this field is required-but-meaningless.
