@@ -75,7 +75,7 @@ release exactly" version originally drafted here.
 
 ## Phase 3 — Onboard plouf-plouf
 
-- [ ] Repeat Phase 2 for plouf-plouf (the higher-traffic app). Same shape:
+- [x] Repeat Phase 2 for plouf-plouf (the higher-traffic app). Same shape:
       raw manifests at `k8s/apps/plouf-plouf/`, manual-sync takeover with
       `argocd app diff`, then flip to `syncPolicy.automated`. Should be
       faster the second time since the pattern is proven.
@@ -147,3 +147,4 @@ _(Append a one-line entry per session as we complete checkboxes, with date.)_
 - 2026-05-19 — D5 locked: Tofu creates the root Application via a tiny local Helm chart (`terraform/argocd-root-app/`). Avoids `kubernetes_manifest`'s CRD-at-plan-time chicken-and-egg without adding a new provider.
 - 2026-05-19 — Phase 2/3 swapped: rehearsed takeover on paulintrognon.fr (lower-stakes) first; plouf-plouf moved to Phase 3.
 - 2026-05-19 — Phase 2 complete. paulintrognon.fr onboarded as an Argo CD Application; takeover sync only added the tracking-id annotation (zero substantive drift); `syncPolicy.automated` flipped on; end-to-end auto-sync verified with a deliberate label change.
+- 2026-05-23 — Phase 3 complete. plouf-plouf onboarded as an Argo CD Application; same shape as paulintrognon.fr (zero drift on the takeover diff, `syncPolicy.automated` flipped on as a follow-up commit). Both workload apps now fully under GitOps.
