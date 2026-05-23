@@ -1,0 +1,36 @@
+# Argo CD Application — plouf-plouf.
+#
+# Discovered and applied by the root Application (terraform/argocd-root-app),
+# which watches argocd/apps/ in this repo and creates/updates every
+# Application CR it finds.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: plouf-plouf
+  namespace: argocd
+
+spec:
+  project: default
+  # Argo CD's built-in catch-all Project. Projects group Applications and
+  # scope what each can do (which repos can be sourced from, which namespaces
+  # can be deployed to, etc.). `default` allows everything — fine for a
+  # single-tenant cluster.
+
+  source:
+    repoURL: https://github.com/paulintrognon/infra.git
+    targetRevision: main
+    path: k8s/apps/plouf-plouf
+
+  destination:
+    server: https://kubernetes.default.svc
+    # "This cluster." The in-cluster Kubernetes API address.
+
+    namespace: default
+    # The namespace the workload's resources run in. Manifests at
+    # `source.path` that don't declare their own `metadata.namespace` get
+    # this value injected into them as Argo CD applies them; manifests that
+    # DO declare a namespace keep it. This field only fills in the blanks.
+
+
