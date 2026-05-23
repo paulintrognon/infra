@@ -33,4 +33,24 @@ spec:
     # this value injected into them as Argo CD applies them; manifests that
     # DO declare a namespace keep it. This field only fills in the blanks.
 
+  syncPolicy:
+    automated:
+      # When the manifests in `path` change in git, Argo CD reconciles
+      # them to the cluster automatically — no human in the loop. This is
+      # the whole point of GitOps: commits become deploys.
 
+      prune: true
+      # If a manifest is REMOVED from k8s/apps/plouf-plouf/ in git,
+      # Argo CD deletes the corresponding live resource on the next sync.
+      # Without this, deleting a file would leave its resource orphaned in
+      # the cluster — git would stop being the source of truth.
+      #
+      # Safety: pruning only applies to resources Argo CD OWNS (i.e. ones
+      # carrying the `argocd.argoproj.io/tracking-id` annotation we saw in
+      # `argocd app diff` earlier). It won't touch unrelated cluster state.
+
+      selfHeal: true
+      # If someone hand-edits a live resource (e.g. `kubectl edit`, a
+      # one-off `kubectl patch`), Argo CD detects the drift and reverts
+      # the change to match git. Keeps git authoritative; discourages
+      # "quick fixes" that survive only on the cluster.
