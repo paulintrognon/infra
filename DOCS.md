@@ -168,9 +168,12 @@ Developer pushes to main
    rolling update of pods
 ```
 
-Each app has its own CI that builds and pushes images to GitHub
-Container Registry (GHCR). Image tags are bumped in this repo by hand
-for now; ROADMAP Phase 4 covers the planned cross-repo automation.
+Each app's CI builds and pushes its image to GitHub Container Registry
+(GHCR), then opens a PR in this repo bumping the image tag in
+`k8s/apps/<app>/deployment.yaml`. The PR is reviewed and merged
+manually; Argo CD picks up the merged change within ~3 minutes and
+rolls out the new image. The cross-repo PR is opened by a dedicated
+GitHub App (`paulin-infra-bot`), installed on this repo only.
 
 ### What an Application points at
 

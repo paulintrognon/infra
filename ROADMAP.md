@@ -36,6 +36,8 @@ Decided on 2026-05-17. Companion conversation: option (b) + (3) from
 | D3 | Directory layout for Argo CD manifests              | Root lives in a tiny Helm chart at `terraform/argocd-root-app/` (installed by Tofu — see D5). Child Applications live in `argocd/apps/*.yaml` (synced by the root). | Root is a Tofu-implementation detail (Tofu's the only consumer); child folder is what Argo CD reads over the network. Different consumers, different homes. |
 | D4 | Argo CD → this repo auth                            | None — anonymous HTTPS clone of the public repo.                       | Repo is already public, so the "leaks the deploy graph" concern is moot. Zero secrets to manage. Re-evaluate when (a) a repo goes private, or (b) we wire Phase 4 write-back — at that point a GitHub App likely serves both. |
 | D5 | How Tofu creates the root Application               | Tiny local Helm chart whose only template is the Application CR, installed via the existing `helm` provider. | Zero new providers (vs `kubernetes_manifest`, which would add `hashicorp/kubernetes` AND fail cold-start because it validates against the Application CRD before Argo CD has installed it). Scaffolding cost is bounded — 3-file chart, no values. |
+| D6 | Cross-repo write auth (plouf-plouf CI → paulin/infra) | GitHub App `paulin-infra-bot`, installed on paulin/infra only, scoped to Contents R/W + Pull requests R/W. App ID stored as `vars.INFRA_BOT_APP_ID` in plouf-plouf; private key as `secrets.INFRA_BOT_PRIVATE_KEY`. | Separate bot identity over a personal PAT — survives any one human's account changes, attribution is clean (`paulin-infra-bot[bot]`), permissions narrow to what the bump flow needs. |
+| D7 | Merge policy for auto-bump PRs                      | Manual review (no auto-merge).                                                                              | Reviewer-in-the-loop catches bad deploys before they land. Auto-merge would require a stronger gate (e.g. a PR-shape validator) — overkill for a learning setup. Stays a future option. |
 
 Open decisions are marked 🟡 in the phases below. Fill the table in here as
 they're locked.
@@ -82,18 +84,16 @@ release exactly" version originally drafted here.
 
 ## Phase 4 — Close the loop: auto-PR from plouf-plouf CI
 
-- [ ] 🟡 Auth mechanism for cross-repo writes from plouf-plouf CI →
-      `paulin/infra` (PAT vs GitHub App). App is cleaner long-term and
-      avoids tying writes to one human's account.
-- [ ] Add a step to plouf-plouf's GHA workflow: after `docker push`,
+- [x] Auth mechanism for cross-repo writes from plouf-plouf CI →
+      `paulin/infra` (decided: D6 — GitHub App `paulin-infra-bot`,
+      installed on paulin/infra only).
+- [x] Add a step to plouf-plouf's GHA workflow: after `docker push`,
       open a PR here bumping the image tag in
-      `argocd/apps/plouf-plouf.yaml` (or the underlying values file).
-- [ ] 🟡 Auto-merge policy (manual review vs auto-merge on green checks).
-      Manual review is safer for a learning setup; auto-merge is the eventual
-      goal.
-- [ ] (Optional) Configure a GitHub webhook → Argo CD so syncs happen
-      immediately instead of via 3-minute polling.
-- [ ] End-to-end test: commit to plouf-plouf → PR appears here → merge →
+      `k8s/apps/plouf-plouf/deployment.yaml`.
+- [x] Auto-merge policy (decided: D7 — manual review).
+- [ ] (Optional, deferred to Phase 5) Configure a GitHub webhook → Argo CD
+      so syncs happen immediately instead of via 3-minute polling.
+- [x] End-to-end test: commit to plouf-plouf → PR appears here → merge →
       cluster updated.
 
 ## Phase 5 — Expose the Argo CD UI
@@ -108,12 +108,8 @@ Deferred until after push-to-deploy works. Port-forward suffices until then.
 
 ## Phase 6 — Polish & long-term
 
-- [ ] Sync failure notifications (Slack / Discord / email).
-- [ ] (Optional) Migrate cert-manager from Tofu ownership to Argo CD ownership
-      for consistency. Not urgent — both are working.
-- [ ] (Future, explicitly out of scope here) Argo CD Image Updater to
-      auto-bump without PRs. The PR step is also our audit trail, so we
-      want it for now.
+- [ ] Write docs on how to upgrade any critical tools
+- [ ] Write docs on how to add a new app
 
 ## Hazards we've already identified
 
@@ -148,3 +144,4 @@ _(Append a one-line entry per session as we complete checkboxes, with date.)_
 - 2026-05-19 — Phase 2/3 swapped: rehearsed takeover on paulintrognon.fr (lower-stakes) first; plouf-plouf moved to Phase 3.
 - 2026-05-19 — Phase 2 complete. paulintrognon.fr onboarded as an Argo CD Application; takeover sync only added the tracking-id annotation (zero substantive drift); `syncPolicy.automated` flipped on; end-to-end auto-sync verified with a deliberate label change.
 - 2026-05-23 — Phase 3 complete. plouf-plouf onboarded as an Argo CD Application; same shape as paulintrognon.fr (zero drift on the takeover diff, `syncPolicy.automated` flipped on as a follow-up commit). Both workload apps now fully under GitOps.
+- 2026-05-24 — Phase 4 complete. `paulin-infra-bot` GitHub App created (App ID 3829850), installed on paulin/infra only. plouf-plouf's `publish.yaml` gained a `bump-infra` job that mints an installation token, clones paulin/infra, sed-edits `k8s/apps/plouf-plouf/deployment.yaml`, and opens a PR via `peter-evans/create-pull-request`. Manual review on the PR (D7); Argo CD reconciles after merge. Webhook → Argo CD deferred. D6, D7 locked.
