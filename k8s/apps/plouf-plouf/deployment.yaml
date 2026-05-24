@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: plouf-plouf
-          image: ghcr.io/paulintrognon/plouf-plouf:5.6.0
+          image: ghcr.io/paulintrognon/plouf-plouf:5.6.1
           # Explicit so the default rule (Always for :latest, IfNotPresent for
           # pinned tags) isn't something a reader has to remember.
           imagePullPolicy: IfNotPresent
