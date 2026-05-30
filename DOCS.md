@@ -144,6 +144,26 @@ This is the **app-of-apps** pattern. Adding a new workload is a
 single-file change in `argocd/apps/`; Argo CD discovers it
 automatically.
 
+### Accessing the Argo CD UI
+
+The Argo CD web UI is exposed at **https://argocd.paulintrognon.fr**,
+behind the same Traefik + cert-manager ingress every workload uses.
+Traefik terminates TLS with a Let's Encrypt certificate; the in-cluster
+hop to the Argo CD pod is plain HTTP (`server.insecure`), so no
+certificate is mounted into the pod itself. The Helm values that wire
+this up live in `terraform/argocd.tf`.
+
+Login is the built-in `admin` user. The bootstrap password was rotated
+and the transient `argocd-initial-admin-secret` deleted, so the
+credential lives only in a password manager outside the cluster and,
+bcrypt-hashed, in the `argocd-secret` Secret.
+
+The `argocd` CLI talks to the server over gRPC, which doesn't survive
+the HTTP/1.1 ingress hop in its native form. Pass `--grpc-web` (or
+alias `argocd` to `argocd --grpc-web`) to silence the warning it prints
+— gRPC-Web tunnels the same calls over ordinary HTTP, which the ingress
+handles fine.
+
 ## The deploy path: from code to cluster
 
 After bootstrap, a deploy looks like:
@@ -242,6 +262,30 @@ each lives in `ROADMAP.md` under "Architectural decisions."
   installs a 3-file chart whose only template is the Application.
   Reuses the existing `helm` provider — no new providers to add, and
   `kubernetes_manifest`'s cold-start CRD problem is avoided.
+
+## Optional future improvements
+
+None of these are needed at the current scale — they're recorded so the
+trade-offs are already on the table if circumstances change.
+
+- **GitHub login for the Argo CD UI (SSO).** Today the UI uses Argo CD's
+  built-in `admin` user: one shared credential, right-sized for a single
+  owner. If access ever widens, Argo CD's bundled Dex connector can
+  federate login to GitHub — each person gets their own identity, and
+  GitHub org/team membership maps to Argo CD RBAC roles. Cost:
+  registering a GitHub OAuth App and storing its client secret in the
+  cluster (which also forces the secret-management choice below).
+
+- **A secret-management tool.** The cluster commits no secrets today —
+  everything is bootstrap-generated or lives outside the repo. The first
+  declarative secret (an OAuth client secret, a webhook token) would
+  want sealed-secrets, SOPS+age, or similar, so secrets can live safely
+  in this public repo. Deferred until something actually needs it.
+
+- **Instant syncs via webhook.** Argo CD polls this repo every ~3
+  minutes. A GitHub webhook to its `/api/webhook` endpoint — now
+  internet-reachable — would cut post-merge deploy latency to seconds.
+  Purely additive whenever wanted.
 
 ## Where to look next
 

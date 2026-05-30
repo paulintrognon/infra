@@ -38,6 +38,9 @@ Decided on 2026-05-17. Companion conversation: option (b) + (3) from
 | D5 | How Tofu creates the root Application               | Tiny local Helm chart whose only template is the Application CR, installed via the existing `helm` provider. | Zero new providers (vs `kubernetes_manifest`, which would add `hashicorp/kubernetes` AND fail cold-start because it validates against the Application CRD before Argo CD has installed it). Scaffolding cost is bounded — 3-file chart, no values. |
 | D6 | Cross-repo write auth (plouf-plouf CI → paulin/infra) | GitHub App `paulin-infra-bot`, installed on paulin/infra only, scoped to Contents R/W + Pull requests R/W. App ID stored as `vars.INFRA_BOT_APP_ID` in plouf-plouf; private key as `secrets.INFRA_BOT_PRIVATE_KEY`. | Separate bot identity over a personal PAT — survives any one human's account changes, attribution is clean (`paulin-infra-bot[bot]`), permissions narrow to what the bump flow needs. |
 | D7 | Merge policy for auto-bump PRs                      | Manual review (no auto-merge).                                                                              | Reviewer-in-the-loop catches bad deploys before they land. Auto-merge would require a stronger gate (e.g. a PR-shape validator) — overkill for a learning setup. Stays a future option. |
+| D8 | Domain for the Argo CD UI                           | `argocd.paulintrognon.fr` (personal apex).                                                                 | First cluster-level UI. Personal apex reads as "Paulin's own infra tooling" and keeps the admin UI off the public product domain. A neutral infra domain was overkill for a single box. DNS is a manual A record at OVH (no DNS provider in Tofu). |
+| D9 | Argo CD UI auth                                     | Built-in `admin` user only; bootstrap password rotated.                                                    | Single-owner cluster — one credential is right-sized, and online brute-force against a strong random/rotated password behind bcrypt isn't the real threat. Dex/GitHub SSO recorded as an optional future improvement (DOCS.md); revisit if access ever widens. |
+| D10| TLS termination for the UI                          | Edge termination at Traefik (`server.insecure: true`); plain HTTP on the in-cluster hop.                   | Matches every workload's ingress exactly. The only plaintext hop never leaves the node; encrypting it would need a service mesh and only matters with untrusted co-tenants — not here. Validated against the cert-manager staging issuer before flipping to prod, to avoid Let's Encrypt rate limits. |
 
 Open decisions are marked 🟡 in the phases below. Fill the table in here as
 they're locked.
@@ -91,20 +94,26 @@ release exactly" version originally drafted here.
       open a PR here bumping the image tag in
       `k8s/apps/plouf-plouf/deployment.yaml`.
 - [x] Auto-merge policy (decided: D7 — manual review).
-- [ ] (Optional, deferred to Phase 5) Configure a GitHub webhook → Argo CD
-      so syncs happen immediately instead of via 3-minute polling.
+- [ ] (Optional, still deferred — tracked under "Optional future
+      improvements" in DOCS.md) Configure a GitHub webhook → Argo CD so syncs
+      happen immediately instead of via 3-minute polling. Unblocked now that
+      `/api/webhook` is internet-reachable via the Phase 5 ingress.
 - [x] End-to-end test: commit to plouf-plouf → PR appears here → merge →
       cluster updated.
 
 ## Phase 5 — Expose the Argo CD UI
 
-Deferred until after push-to-deploy works. Port-forward suffices until then.
+Decisions D8–D10 above. UI now live at https://argocd.paulintrognon.fr.
 
-- [ ] 🟡 Domain (e.g. `argocd.<something>.fr`).
-- [ ] Ingress + cert-manager certificate for the UI.
-- [ ] 🟡 Auth approach (keep built-in admin only, or GitHub OAuth via Dex
-      for a real login). At minimum, rotate the initial admin password
-      before exposing.
+- [x] Domain (decided: D8 — `argocd.paulintrognon.fr`; manual A record at OVH).
+- [x] Ingress + cert-manager certificate for the UI. Helm values added to
+      `terraform/argocd.tf` as an inline heredoc (ingress + TLS +
+      `server.insecure`); cert validated against the staging issuer, then
+      flipped to prod (D10).
+- [x] Auth approach (decided: D9 — built-in `admin` only; Dex/GitHub SSO
+      recorded as an optional future improvement in DOCS.md).
+- [x] Rotate the bootstrap admin password (`argocd account update-password`)
+      and delete the transient `argocd-initial-admin-secret`.
 
 ## Phase 6 — Polish & long-term
 
@@ -145,3 +154,4 @@ _(Append a one-line entry per session as we complete checkboxes, with date.)_
 - 2026-05-19 — Phase 2 complete. paulintrognon.fr onboarded as an Argo CD Application; takeover sync only added the tracking-id annotation (zero substantive drift); `syncPolicy.automated` flipped on; end-to-end auto-sync verified with a deliberate label change.
 - 2026-05-23 — Phase 3 complete. plouf-plouf onboarded as an Argo CD Application; same shape as paulintrognon.fr (zero drift on the takeover diff, `syncPolicy.automated` flipped on as a follow-up commit). Both workload apps now fully under GitOps.
 - 2026-05-24 — Phase 4 complete. `paulin-infra-bot` GitHub App created (App ID 3829850), installed on paulin/infra only. plouf-plouf's `publish.yaml` gained a `bump-infra` job that mints an installation token, clones paulin/infra, sed-edits `k8s/apps/plouf-plouf/deployment.yaml`, and opens a PR via `peter-evans/create-pull-request`. Manual review on the PR (D7); Argo CD reconciles after merge. Webhook → Argo CD deferred. D6, D7 locked.
+- 2026-05-30 — Phase 5 complete. Argo CD UI exposed at https://argocd.paulintrognon.fr via a Traefik ingress + cert-manager cert. Helm values added to `terraform/argocd.tf` as an inline heredoc (`global.domain`, `server.ingress`, `server.insecure: true`); cert validated against the staging ClusterIssuer first, then flipped one word to prod (READY, real Let's Encrypt issuer confirmed). Bootstrap admin password rotated via `argocd account update-password`; transient `argocd-initial-admin-secret` deleted. Auth = built-in admin only (D9); domain = `argocd.paulintrognon.fr` (D8); edge TLS termination at Traefik (D10). Dex SSO, a secret-management tool, and the GitHub webhook recorded as "Optional future improvements" in DOCS.md. D8–D10 locked.
