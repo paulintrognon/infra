@@ -287,6 +287,21 @@ trade-offs are already on the table if circumstances change.
   internet-reachable — would cut post-merge deploy latency to seconds.
   Purely additive whenever wanted.
 
+- **Rate-limiting at the ingress.** A Traefik middleware capping
+  requests-per-client would let the box shed load gracefully — on a
+  single node there's no horizontal headroom, so turning "one runaway
+  client melts a pod" into "that client gets 429s, everyone else is
+  fine" has real value, and it raises the cost of brute-forcing any
+  login endpoint. Worth being clear on the limits: it is *not* DDoS
+  protection (a distributed attack comes from many IPs and belongs
+  upstream at the provider/CDN), and per-IP keying is blunt — shared
+  NATs throttle a whole office as one client, attackers rotate IPs.
+  Two design choices come with it: where the limit lives (a Traefik
+  middleware vs. app-level), and a prerequisite that the real client
+  IP is plumbed through `X-Forwarded-For` correctly, or the limit
+  either catches nobody or everybody. A generous global default is the
+  right starting point, not aggressive per-app tuning.
+
 ## Where to look next
 
 - **Setup from scratch** — `README.md`.
