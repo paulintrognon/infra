@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: margotbrun-newsletter
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod   # cert-manager issues + renews TLS via Let's Encrypt
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - newsletter.margotbrun.com
+      secretName: margotbrun-newsletter-tls   # cert-manager writes the issued cert here
+  rules:
+    - host: newsletter.margotbrun.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: margotbrun-newsletter
+                port:
+                  number: 80

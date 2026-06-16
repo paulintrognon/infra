@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: margotbrun-newsletter
+spec:
+  replicas: 1
+
+  # Rollout strategy
+  #
+  # RollingUpdate at replicas: 1:
+  #   - maxSurge: 1        → during a release, briefly run 2 pods (old + new).
+  #   - maxUnavailable: 0  → never fewer than 1 ready pod.
+  # Combined: zero-downtime rollouts as long as the new pod's readiness probe
+  # is honest
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+
+  selector:
+    matchLabels:
+      app: margotbrun-newsletter
+  template:
+    metadata:
+      labels:
+        app: margotbrun-newsletter
+    spec:
+      containers:
+        - name: margotbrun-newsletter
+          image: ghcr.io/paulintrognon/margotbrun-newsletter-kiwi:1.0.0
+          # Explicit so the default rule (Always for :latest, IfNotPresent for
+          # pinned tags) isn't something a reader has to remember.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80      # nginx listens on 80
+          resources:
+            requests:
+              cpu: 10m         # near-idle; just enough to get scheduled
+              memory: 16Mi     # nginx:alpine sits around 5–10Mi serving static files
+            limits:
+              cpu: 100m        # CPU limits only throttle (never kill) — generous headroom for traffic bursts
+              memory: 64Mi     # hard ceiling; if nginx ever exceeds this it gets OOM-killed, which for a static server means something's wrong
+
+          # Readiness — "should traffic be routed to this pod NOW?"
+          # Failure removes the pod from the Service's endpoints (no traffic);
+          # the pod itself is NOT killed. This is a static site served by
+          # nginx, so there's no app-level health endpoint — we just ask nginx
+          # for the home page. Once it answers 200, the archive is serving.
+          readinessProbe:
+            httpGet:
+              path: /              # no /api/health on a static site; "/" is the index
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3        # 3 fails × 10s = 30s before pulling traffic (but not restarting)
+
+          # Liveness — "is this pod fundamentally broken and needs a restart?"
+          # Failure KILLS the container (Deployment's ReplicaSet recreates it).
+          # Catches an nginx that's wedged — holding the socket but no longer
+          # answering. Tuned more forgivingly than readiness because restarting
+          # a pod that was about to recover is worse than waiting an extra 30s.
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 15    # generous startup grace
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3        # 3 × 20s = 60s of failure before restart

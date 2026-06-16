@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: margotbrun-newsletter
+spec:
+  selector:
+    app: margotbrun-newsletter   # matches the Deployment's pod label
+  ports:
+    - port: 80          # the port other things in the cluster (Ingress) dial
+      targetPort: 80    # the container port nginx listens on
