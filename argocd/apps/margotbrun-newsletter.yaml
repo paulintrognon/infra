@@ -1,0 +1,34 @@
+# Argo CD Application — newsletter.margotbrun.com.
+#
+# Discovered and applied by the root Application (terraform/argocd-root-app),
+# which watches argocd/apps/ in this repo and creates/updates every
+# Application CR it finds.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+
+metadata:
+  name: margotbrun-newsletter
+  # Application names follow Kubernetes resource-name rules: lowercase
+  # alphanumeric and hyphens, NO dots. So the domain becomes a slug —
+  # `margotbrun-newsletter` — matching the Deployment / Service / Ingress
+  # names in k8s/apps/margotbrun-newsletter/.
+
+  namespace: argocd
+
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/paulintrognon/infra.git
+    targetRevision: main
+    path: k8s/apps/margotbrun-newsletter
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+
+  syncPolicy:
+    automated:
+      prune: true       # delete cluster resources when their manifest is removed from git
+      selfHeal: true    # revert hand-edits so git stays the source of truth
