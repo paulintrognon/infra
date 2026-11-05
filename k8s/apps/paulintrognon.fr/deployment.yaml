@@ -28,7 +28,7 @@ spec:
     spec:
       containers:
         - name: paulintrognon-fr
-          image: ghcr.io/paulintrognon/paulintrognon.fr:5.0.0
+          image: ghcr.io/paulintrognon/paulintrognon.fr:5.1.0
           # Explicit so the default rule (Always for :latest, IfNotPresent for
           # pinned tags) isn't something a reader has to remember.
           imagePullPolicy: IfNotPresent

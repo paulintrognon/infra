@@ -26,9 +26,10 @@ Personal, opinionated. Public for reference. MIT — no support.
 ## What's where
 
 - `ansible/` — VPS bootstrap (runs locally to configure remote server).
-- `terraform/` — cluster-level system charts via OpenTofu (cert-manager, ...).
+- `terraform/` — cluster-level system charts via OpenTofu (cert-manager, Argo CD, Argo CD root Application).
 - `k8s/system/` — raw cluster manifests applied with `kubectl` (cert-manager ClusterIssuers).
-- `k8s/apps/` — per-app manifests, one folder per app.
+- `argocd/apps/` — one Argo CD Application per app, discovered by the root Application.
+- `k8s/apps/` — per-app manifests, one folder per app. Deployed by Argo CD from `main`, never by hand.
 
 ## Prerequisites
 
@@ -134,15 +135,16 @@ cd terraform/
 tofu apply
 ```
 
-Installs cert-manager (TLS automation) into the `cert-manager` namespace. Type `yes` to confirm.
+Installs cert-manager (TLS automation) into the `cert-manager` namespace, and Argo CD plus its root Application into the `argocd` namespace. Type `yes` to confirm.
 
 Verify:
 
 ```bash
 kubectl get pods -n cert-manager
+kubectl get pods -n argocd
 ```
 
-Three pods, all `Running`. The webhook takes ~30s.
+All pods `Running`. The cert-manager webhook takes ~30s.
 
 ### 7. Apply the cert-manager ClusterIssuers
 
@@ -167,25 +169,29 @@ For OVH: Manager → Web Cloud → Domain → DNS Zone. Propagation can take a f
 
 ### 9. Deploy the apps
 
+Nothing to run: the root Application installed in step 6 watches `argocd/apps/` on `main`, creates one Application per file, and each Application deploys its `k8s/apps/<app>/` folder.
+
+Verify:
+
 ```bash
-kubectl apply -R -f k8s/apps/
-kubectl rollout status deploy --all
+kubectl get applications -n argocd
 ```
 
-Then `curl -i https://<each-app-domain>/api/health` — expect `HTTP/2 200`. First request to a newly-deployed app can take ~1 minute while cert-manager issues the cert.
+Every app should show `Synced` and `Healthy` (or check https://argocd.paulintrognon.fr). Then `curl -i https://<each-app-domain>/api/health` — expect `HTTP/2 200`. First request to a newly-deployed app can take ~1 minute while cert-manager issues the cert.
 
 ## Day-2 operations
 
 ### Update an app's image
 
-Edit `image:` in `k8s/apps/<app>/deployment.yaml`, then:
+1. Publish the new image: push a `v*` tag in the app's repo. Its `publish.yaml` workflow builds and pushes the image to GHCR.
+2. Bump `image:` in `k8s/apps/<app>/deployment.yaml` and merge it to `main`. Apps with a `bump-infra` job (plouf-plouf) open this PR automatically; for the others, commit and push it yourself.
+3. Argo CD picks up the change within ~3 minutes and does a zero-downtime rolling update. Follow it with:
 
 ```bash
-kubectl apply -f k8s/apps/<app>/
 kubectl rollout status deploy/<app>
 ```
 
-Zero-downtime rolling update.
+**Don't `kubectl apply` or `kubectl edit` app resources by hand:** Argo CD's `selfHeal` reverts any change that isn't in git.
 
 ### Upgrade cert-manager
 
