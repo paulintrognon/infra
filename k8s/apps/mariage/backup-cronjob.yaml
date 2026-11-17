@@ -10,9 +10,15 @@
 #   1. init container `dump`: `pg_dump` writes the whole database to one
 #      file, in Postgres's custom format (compressed, restorable table by
 #      table with `pg_restore`).
-#   2. container `upload`: rclone copies that file to the bucket, then deletes
-#      dumps older than 60 days, so the bucket doesn't grow forever.
+#   2. container `upload`: rclone copies that file to the bucket.
 # If the dump fails, the upload never runs: no half-written file is uploaded.
+#
+# Nothing is ever deleted: a dump is a few kilobytes, so years of them cost
+# nothing. Pruning by age would be a trap — if the database were silently
+# emptied, the nightly job would keep "succeeding" with empty dumps until
+# every good one had aged out. It also means the key needs no delete right:
+# a stolen key can't delete the backups. The guest list is personal data, so
+# the whole bucket goes once the wedding is over and the data no longer needed.
 #
 # Credentials: `mariage-db` (to read the database) and `mariage-backup`
 # (object storage keys scoped to the backup bucket only), both created by
@@ -22,11 +28,7 @@
 # run; `kubectl get jobs` lists the recent ones, failed included. Nothing
 # alerts on a failure.
 #
-# Restoring (the database must exist and be empty, e.g. a fresh disk):
-#   rclone copy :s3:paulin-mariage-backups/<file>.dump . (same flags as below)
-#   kubectl port-forward svc/mariage-postgres 5432 &
-#   pg_restore --no-owner -h localhost -U mariage -d mariage <file>.dump
-# Then start the app: the migrations find everything already applied.
+# Restoring: see README.md in this folder.
 
 apiVersion: batch/v1
 kind: CronJob
@@ -83,15 +85,17 @@ spec:
               imagePullPolicy: IfNotPresent
               # rclone needs no config file: `:s3:` plus flags describe the
               # remote, and --s3-env-auth reads the keys from the environment.
+              # --s3-no-check-bucket: don't try to create the bucket first —
+              # the key isn't allowed to, on purpose. `lsl --max-age 1d` ends
+              # the log with the dump just uploaded.
               command:
                 - sh
                 - -c
                 - |
                   set -e
-                  S3="--s3-provider Scaleway --s3-region fr-par --s3-endpoint s3.fr-par.scw.cloud --s3-env-auth"
+                  S3="--s3-provider Scaleway --s3-region fr-par --s3-endpoint s3.fr-par.scw.cloud --s3-env-auth --s3-no-check-bucket"
                   rclone copy /backup :s3:paulin-mariage-backups/ $S3
-                  rclone delete :s3:paulin-mariage-backups/ $S3 --min-age 60d
-                  rclone lsl :s3:paulin-mariage-backups/ $S3
+                  rclone lsl :s3:paulin-mariage-backups/ $S3 --max-age 1d
               env:
                 - name: HOME
                   value: /tmp       # rclone writes its cache under $HOME

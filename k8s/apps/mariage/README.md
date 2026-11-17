@@ -42,7 +42,7 @@ kubectl create secret docker-registry ghcr-pull \
 
 **`mariage-backup`**: object storage keys for `backup-cronjob.yaml`.
 
-Scaleway grants a key its rights over a whole project, not over one bucket. So the `paulin-mariage-backups` bucket sits alone in its own project, `mariage`: if the key leaks from the cluster, it reaches these dumps and nothing else. The key belongs to an IAM application `mariage-backup` (a technical account, no console access), whose policy is scoped to the `mariage` project with `ObjectStorageObjectsRead`, `ObjectStorageObjectsWrite`, `ObjectStorageObjectsDelete` (old dumps are pruned) and `ObjectStorageBucketsRead`. The key's preferred project is `mariage`: Scaleway's S3 API looks buckets up there.
+Scaleway grants a key its rights over a whole project, not over one bucket. So the `paulin-mariage-backups` bucket sits alone in its own project, `mariage`: if the key leaks from the cluster, it reaches these dumps and nothing else. The key belongs to an IAM application `mariage-backup` (a technical account, no console access), whose policy is scoped to the `mariage` project with `ObjectStorageObjectsRead`, `ObjectStorageObjectsWrite` and `ObjectStorageBucketsRead`. No delete right: dumps are never pruned (see `backup-cronjob.yaml`), so a stolen key can't delete them (it could still overwrite one; bucket versioning would close that gap). The key's preferred project is `mariage`: Scaleway's S3 API looks buckets up there.
 
 ```bash
 kubectl create secret generic mariage-backup \
@@ -74,6 +74,24 @@ Scaleway API keys in this organisation expire after one year at most. An expired
 4. Only then, delete the old key in the Scaleway console, and set the next reminder.
 
 Checking that backups still run, at any time: `kubectl get cronjob mariage-backup` (column `LAST SUCCESS`).
+
+## Restoring a backup
+
+Restores in place, into the running database: the dump replaces every table, the migrations' bookkeeping included. The same steps work on a fresh, empty disk, where the app has already re-run the migrations and the couple's seed rows.
+
+1. Download the dump: Scaleway console → project `mariage` → Object Storage → `paulin-mariage-backups` → the file you want → Download. The newest is the last in the list (names are UTC timestamps).
+2. Load it with the `pg_restore` of the database's own pod (same version, nothing to install):
+
+   ```bash
+   kubectl exec -i mariage-postgres-0 -- \
+     pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error \
+     -U mariage -d mariage < mariage-<timestamp>.dump
+   ```
+
+   - `--clean --if-exists`: drop each table before recreating it, so the restore doesn't clash with what is there.
+   - `--single-transaction --exit-on-error`: all or nothing. On any error the database is left exactly as it was, never half-restored.
+
+3. Reload the app in the browser: it reads the database on every page, no restart needed.
 
 ## Deploying a new version
 
