@@ -6,7 +6,7 @@ A wedding organisation app (private repo `paulintrognon/mariage`): a React Route
 |---|---|
 | `postgres-statefulset.yaml`, `postgres-service.yaml` | The database and its disk |
 | `deployment.yaml`, `service.yaml` | The app; an init container migrates the database first |
-| `middlewares.yaml`, `ingress.yaml` | HTTPS, rate limit, basic auth |
+| `middlewares.yaml`, `ingress.yaml` | HTTPS, basic auth |
 
 ## Secrets created by hand
 
@@ -27,7 +27,8 @@ Postgres reads `POSTGRES_PASSWORD` only when it creates an empty database. Chang
 
 ```bash
 # htpasswd comes with apache2-utils, or: docker run --rm httpd:2.4-alpine htpasswd …
-htpasswd -nbB <login> "$(openssl rand -base64 24)"   # once per person; note each password
+# Once per person: prints the password (note it), then the line to keep.
+P=$(openssl rand -base64 24); echo "$P"; htpasswd -nbB <login> "$P"
 kubectl create secret generic mariage-basic-auth --from-file=users=<file with the lines>
 ```
 
@@ -40,4 +41,4 @@ kubectl create secret docker-registry ghcr-pull \
 
 ## Deploying a new version
 
-The app's CI pushes `ghcr.io/paulintrognon/mariage:sha-<commit>` on every push to its `main`. Deploying is changing that tag in `deployment.yaml` (both the init container and the app container) and merging. The pod is stopped, the migrations run, then the new version starts: a few seconds of downtime.
+The app's CI pushes `ghcr.io/paulintrognon/mariage:sha-<commit>` on every push to its `main`. Deploying is changing that tag in `deployment.yaml` (twice: the init container and the app container must run the same version) and merging. The pod is stopped, the migrations run, then the new version starts: a few seconds of downtime.

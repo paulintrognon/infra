@@ -37,8 +37,11 @@ spec:
         app: mariage-postgres
     spec:
       # Run as the image's own `postgres` user (uid/gid 70 on Alpine) instead
-      # of starting as root and dropping privileges. `fsGroup` makes the
-      # mounted disk writable by that group.
+      # of starting as root and dropping privileges. The disk is writable
+      # anyway: local-path creates its directories open to everyone (0777),
+      # and Postgres then makes its own data folder private (0700).
+      # `fsGroup` would chown the disk for volume types that support it;
+      # local-path ignores it.
       securityContext:
         runAsNonRoot: true
         runAsUser: 70

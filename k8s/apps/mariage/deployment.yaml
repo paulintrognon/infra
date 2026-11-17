@@ -48,6 +48,8 @@ spec:
       # lock, so two runs at once can't apply a migration twice.
       initContainers:
         - name: migrate
+          # Same tag as the app container below: the migrations must be the
+          # ones the app was built with. Bump both together.
           image: ghcr.io/paulintrognon/mariage:sha-d5846c9
           imagePullPolicy: IfNotPresent
           command: ["node", "app/db/migrate.ts"]

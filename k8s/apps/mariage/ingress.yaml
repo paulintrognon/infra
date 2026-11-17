@@ -1,5 +1,4 @@
-# Rate limit first, then basic auth: a client guessing passwords is slowed
-# down before Traefik even checks the password. See middlewares.yaml.
+# Every request goes through basic auth first (middlewares.yaml).
 #
 # No www. variant: nobody types www. in front of a subdomain.
 
@@ -9,7 +8,7 @@ metadata:
   name: mariage
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
-    traefik.ingress.kubernetes.io/router.middlewares: default-mariage-rate-limit@kubernetescrd,default-mariage-basic-auth@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: default-mariage-basic-auth@kubernetescrd
 spec:
   ingressClassName: traefik
   tls:

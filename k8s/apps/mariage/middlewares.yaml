@@ -1,4 +1,4 @@
-# Traefik middlewares in front of the mariage app. A Middleware is a step a
+# Traefik middleware in front of the mariage app. A Middleware is a step a
 # request goes through between Traefik and the app; an Ingress opts in with
 # the `traefik.ingress.kubernetes.io/router.middlewares` annotation, as
 # `<namespace>-<name>@kubernetescrd`, applied in the order listed there.
@@ -25,16 +25,3 @@ spec:
     # the password, so the password never enters the app or its logs.
     removeHeader: true
 
----
-# Caps requests per client IP. Mostly a brake on password guessing: the real
-# defence is a long random password, this makes trying many of them slow.
-# A page load is a few dozen requests (scripts, styles, fonts), hence the
-# burst.
-apiVersion: traefik.io/v1alpha1
-kind: Middleware
-metadata:
-  name: mariage-rate-limit
-spec:
-  rateLimit:
-    average: 10    # requests per second, sustained
-    burst: 100
