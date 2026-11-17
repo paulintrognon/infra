@@ -1,0 +1,130 @@
+# Nightly backup of the mariage database to Scaleway Object Storage.
+#
+# Why: the database lives on one directory of one disk (see
+# postgres-statefulset.yaml). A disk failure, a lost VPS or a wrong
+# `kubectl delete pvc` would erase it for good. A copy in another place,
+# another company even, survives all three.
+#
+# How: a CronJob creates a Job on schedule; the Job runs a pod to completion.
+# The pod has two steps that share an in-memory scratch dir (`backup`):
+#   1. init container `dump`: `pg_dump` writes the whole database to one
+#      file, in Postgres's custom format (compressed, restorable table by
+#      table with `pg_restore`).
+#   2. container `upload`: rclone copies that file to the bucket.
+# If the dump fails, the upload never runs: no half-written file is uploaded.
+#
+# Nothing is ever deleted: a dump is a few kilobytes, so years of them cost
+# nothing. Pruning by age would be a trap — if the database were silently
+# emptied, the nightly job would keep "succeeding" with empty dumps until
+# every good one had aged out. It also means the key needs no delete right:
+# a stolen key can't delete the backups. The guest list is personal data, so
+# the whole bucket goes once the wedding is over and the data no longer needed.
+#
+# Credentials: `mariage-db` (to read the database) and `mariage-backup`
+# (object storage keys scoped to the backup bucket only), both created by
+# hand — see README.md in this folder.
+#
+# Watching it: `kubectl get cronjob mariage-backup` shows the last successful
+# run; `kubectl get jobs` lists the recent ones, failed included. Nothing
+# alerts on a failure.
+#
+# Restoring: see README.md in this folder.
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mariage-backup
+spec:
+  # 03:00 Paris time: the house is asleep, and it's an hour before the VPS's
+  # automatic reboot window (04:00, unattended security upgrades).
+  schedule: "0 3 * * *"
+  timeZone: Europe/Paris
+  # Never two backups at once; if one is still running, skip the next.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2              # retry a failed run twice, then give up until tomorrow
+      activeDeadlineSeconds: 900   # a run stuck for 15 minutes is killed
+      template:
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+            - name: dump
+              # Same version as the server: pg_dump refuses a newer server.
+              image: postgres:18.6-alpine
+              imagePullPolicy: IfNotPresent
+              command:
+                - sh
+                - -c
+                - pg_dump -Fc -h mariage-postgres -U mariage -d mariage -f "/backup/mariage-$(date -u +%Y-%m-%dT%H%MZ).dump"
+              env:
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mariage-db
+                      key: POSTGRES_PASSWORD
+              securityContext: &hardened
+                runAsUser: 70     # the image's `postgres` user
+                runAsGroup: 70
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+          containers:
+            - name: upload
+              image: rclone/rclone:1.72.0
+              imagePullPolicy: IfNotPresent
+              # rclone needs no config file: `:s3:` plus flags describe the
+              # remote, and --s3-env-auth reads the keys from the environment.
+              # --s3-no-check-bucket: don't try to create the bucket first —
+              # the key isn't allowed to, on purpose. `lsl --max-age 1d` ends
+              # the log with the dump just uploaded.
+              command:
+                - sh
+                - -c
+                - |
+                  set -e
+                  S3="--s3-provider Scaleway --s3-region fr-par --s3-endpoint s3.fr-par.scw.cloud --s3-env-auth --s3-no-check-bucket"
+                  rclone copy /backup :s3:paulin-mariage-backups/ $S3
+                  rclone lsl :s3:paulin-mariage-backups/ $S3 --max-age 1d
+              env:
+                - name: HOME
+                  value: /tmp       # rclone writes its cache under $HOME
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: mariage-backup
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: mariage-backup
+                      key: AWS_SECRET_ACCESS_KEY
+              securityContext:
+                <<: *hardened       # same limits as `dump`, as another user
+                runAsUser: 1000
+                runAsGroup: 1000
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup
+              emptyDir:
+                medium: Memory
+                sizeLimit: 64Mi   # a guest list dumps to kilobytes
+            - name: tmp
+              emptyDir:
+                medium: Memory
+                sizeLimit: 16Mi
