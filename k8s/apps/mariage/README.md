@@ -7,6 +7,7 @@ A wedding organisation app (private repo `paulintrognon/mariage`): a React Route
 | `postgres-statefulset.yaml`, `postgres-service.yaml` | The database and its disk |
 | `deployment.yaml`, `service.yaml` | The app; an init container migrates the database first |
 | `middlewares.yaml`, `ingress.yaml` | HTTPS, basic auth |
+| `backup-cronjob.yaml` | Nightly dump of the database to object storage |
 
 ## Secrets created by hand
 
@@ -37,6 +38,13 @@ kubectl create secret generic mariage-basic-auth --from-file=users=<file with th
 ```bash
 kubectl create secret docker-registry ghcr-pull \
   --docker-server=ghcr.io --docker-username=paulintrognon --docker-password=<token>
+```
+
+**`mariage-backup`**: object storage keys for `backup-cronjob.yaml`. A Scaleway API key whose policy allows only the `paulin-mariage-backups` bucket (read, write, delete: old dumps are pruned).
+
+```bash
+kubectl create secret generic mariage-backup \
+  --from-literal=AWS_ACCESS_KEY_ID=… --from-literal=AWS_SECRET_ACCESS_KEY=…
 ```
 
 ## Deploying a new version
