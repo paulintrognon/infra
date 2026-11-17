@@ -50,7 +50,7 @@ spec:
         - name: migrate
           # Same tag as the app container below: the migrations must be the
           # ones the app was built with. Bump both together.
-          image: ghcr.io/paulintrognon/mariage:sha-d5846c9
+          image: ghcr.io/paulintrognon/mariage:sha-65ed675
           imagePullPolicy: IfNotPresent
           command: ["node", "app/db/migrate.ts"]
           env:
@@ -69,7 +69,7 @@ spec:
 
       containers:
         - name: mariage
-          image: ghcr.io/paulintrognon/mariage:sha-d5846c9
+          image: ghcr.io/paulintrognon/mariage:sha-65ed675
           # Explicit so the default rule (Always for :latest, IfNotPresent for
           # pinned tags) isn't something a reader has to remember.
           imagePullPolicy: IfNotPresent
