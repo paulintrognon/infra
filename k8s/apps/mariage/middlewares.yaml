@@ -10,6 +10,11 @@
 # request); the cluster redirects all HTTP to HTTPS (k8s/system/traefik).
 # Outgrown the day guests themselves get access: that needs real accounts
 # or per-guest links, in the app.
+#
+# No rate limit: Traefik can't see client IPs on this cluster yet, so a
+# per-client limit would throttle every visitor as one (see "Rate-limiting
+# at the ingress" in DOCS.md). Against password guessing, the passwords are
+# long and random.
 
 # Credentials: the `users` key of the `mariage-basic-auth` Secret, in htpasswd
 # format, one line per person. Created by hand (see README.md in this folder).
