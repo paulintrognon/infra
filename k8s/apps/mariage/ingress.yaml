@@ -1,0 +1,28 @@
+# Every request goes through basic auth first (middlewares.yaml).
+#
+# No www. variant: nobody types www. in front of a subdomain.
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mariage
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    traefik.ingress.kubernetes.io/router.middlewares: default-mariage-basic-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - mariage.paulintrognon.fr
+      secretName: mariage-tls
+  rules:
+    - host: mariage.paulintrognon.fr
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mariage
+                port:
+                  number: 80

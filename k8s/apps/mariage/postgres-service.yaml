@@ -1,0 +1,16 @@
+# In-cluster address of the database: `mariage-postgres:5432`.
+#
+# A plain ClusterIP Service: reachable from pods inside the cluster only,
+# never from the internet (no Ingress, no NodePort). To look at the data from
+# a laptop, tunnel instead: `kubectl port-forward svc/mariage-postgres 5432`.
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: mariage-postgres
+spec:
+  selector:
+    app: mariage-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432

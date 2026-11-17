@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mariage
+spec:
+  replicas: 1
+
+  # Rollout strategy: Recreate — stop the old pod, then start the new one.
+  #
+  # Unlike the stateless sites (RollingUpdate, zero downtime), this app owns a
+  # database schema. Each new version migrates it before starting (see the
+  # init container). With RollingUpdate, the old pod would keep serving on a
+  # schema it doesn't know, so every migration would have to stay compatible
+  # with the previous version of the code. Recreate trades a few seconds of
+  # downtime per release for that freedom — the right trade for an app with
+  # two users.
+  strategy:
+    type: Recreate
+
+  selector:
+    matchLabels:
+      app: mariage
+  template:
+    metadata:
+      labels:
+        app: mariage
+    spec:
+      # The image is private (the app's repo is private), so the kubelet needs
+      # credentials to pull it from ghcr.io. `ghcr-pull` is created by hand
+      # (see README.md in this folder).
+      imagePullSecrets:
+        - name: ghcr-pull
+
+      # Pod-wide: never run as root. The image already runs as `node` (uid
+      # 1000); this makes Kubernetes refuse to start it otherwise.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Init containers run to completion, in order, before the app container
+      # starts. This one applies the database migrations, from the same image.
+      # If it fails (database down, broken migration), the app never starts
+      # and the old schema stays untouched — the pod shows `Init:Error` and
+      # `kubectl logs <pod> -c migrate` says why. The script takes a Postgres
+      # lock, so two runs at once can't apply a migration twice.
+      initContainers:
+        - name: migrate
+          # Same tag as the app container below: the migrations must be the
+          # ones the app was built with. Bump both together.
+          image: ghcr.io/paulintrognon/mariage:sha-d5846c9
+          imagePullPolicy: IfNotPresent
+          command: ["node", "app/db/migrate.ts"]
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mariage-db
+                  key: DATABASE_URL
+          # `&hardened` names this block (a YAML anchor); the app container
+          # below reuses it as `*hardened`, so both run with the same limits.
+          securityContext: &hardened
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # the app never writes to its own files
+            capabilities:
+              drop: ["ALL"]
+
+      containers:
+        - name: mariage
+          image: ghcr.io/paulintrognon/mariage:sha-d5846c9
+          # Explicit so the default rule (Always for :latest, IfNotPresent for
+          # pinned tags) isn't something a reader has to remember.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: mariage-db
+                  key: DATABASE_URL
+          securityContext: *hardened
+          # With a read-only root filesystem, /tmp is the one writable place
+          # Node or a dependency might reach for. An in-memory scratch dir.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+
+          # Readiness — "should traffic be routed to this pod NOW?"
+          # /healthz answers only when the server is up AND the database
+          # answers. Failing it removes the pod from the Service (Traefik
+          # returns 503s) without restarting it.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          # Liveness — "is this process wedged and in need of a restart?"
+          # Deliberately NOT /healthz: a database outage would then restart a
+          # perfectly healthy server, over and over, fixing nothing. Liveness
+          # only asks whether the process still accepts connections.
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
