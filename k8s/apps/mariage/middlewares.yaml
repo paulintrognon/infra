@@ -1,0 +1,40 @@
+# Traefik middlewares in front of the mariage app. A Middleware is a step a
+# request goes through between Traefik and the app; an Ingress opts in with
+# the `traefik.ingress.kubernetes.io/router.middlewares` annotation, as
+# `<namespace>-<name>@kubernetescrd`, applied in the order listed there.
+#
+# The app has no login of its own: it holds a guest list (names of real
+# people), for two users. HTTP basic auth at the edge is the whole access
+# control — the request never reaches the app without valid credentials.
+# It's sound only over HTTPS (the browser sends the password with every
+# request); the cluster redirects all HTTP to HTTPS (k8s/system/traefik).
+# Outgrown the day guests themselves get access: that needs real accounts
+# or per-guest links, in the app.
+
+# Credentials: the `users` key of the `mariage-basic-auth` Secret, in htpasswd
+# format, one line per person. Created by hand (see README.md in this folder).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: mariage-basic-auth
+spec:
+  basicAuth:
+    secret: mariage-basic-auth
+    realm: mariage
+    # Don't forward the Authorization header to the app: it has no use for
+    # the password, so the password never enters the app or its logs.
+    removeHeader: true
+
+---
+# Caps requests per client IP. Mostly a brake on password guessing: the real
+# defence is a long random password, this makes trying many of them slow.
+# A page load is a few dozen requests (scripts, styles, fonts), hence the
+# burst.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: mariage-rate-limit
+spec:
+  rateLimit:
+    average: 10    # requests per second, sustained
+    burst: 100

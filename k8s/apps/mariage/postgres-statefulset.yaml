@@ -1,0 +1,101 @@
+# PostgreSQL for the mariage app: the cluster's first workload with state.
+#
+# Why a StatefulSet and not a Deployment?
+# A Deployment treats pods as interchangeable and disposable. A database is
+# neither: it owns a disk. A StatefulSet gives the pod a stable name
+# (`mariage-postgres-0`) and, through `volumeClaimTemplates`, a disk
+# (PersistentVolumeClaim) that is created once and then outlives the pod.
+#
+# Where the data lives: the PVC is served by k3s's built-in `local-path`
+# provisioner, i.e. a plain directory on the VPS disk: one copy only, which
+# is why the data also needs a backup off this machine.
+#
+# Data safety: a PVC created from `volumeClaimTemplates` is NOT owned by
+# Argo CD. Deleting this file (or the StatefulSet) does not delete the disk;
+# only an explicit `kubectl delete pvc` does, and local-path's reclaim policy
+# (`Delete`) then wipes the directory for good.
+#
+# Credentials come from the `mariage-db` Secret, created by hand (see
+# README.md in this folder): this repo is public, so no secret lives in git.
+#
+# Would matter at >1 node: replication, a PodDisruptionBudget, network
+# storage. On one box, the single pod and its local disk are the whole story.
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mariage-postgres
+spec:
+  serviceName: mariage-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mariage-postgres
+  template:
+    metadata:
+      labels:
+        app: mariage-postgres
+    spec:
+      # Run as the image's own `postgres` user (uid/gid 70 on Alpine) instead
+      # of starting as root and dropping privileges. `fsGroup` makes the
+      # mounted disk writable by that group.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          # Pinned to a minor version: a major upgrade (18 → 19) changes the
+          # on-disk format and needs a dump/restore, never just a tag bump.
+          image: postgres:18.6-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: mariage
+            - name: POSTGRES_DB
+              value: mariage
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mariage-db
+                  key: POSTGRES_PASSWORD
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          # Postgres 18 images keep their data under /var/lib/postgresql/<major>/,
+          # so the disk is mounted one level up: a future major version gets
+          # its own folder next to the old one, which helps an upgrade.
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql
+          # Readiness only: "can it take connections?". No liveness probe —
+          # killing a database that is slow (e.g. replaying its log after a
+          # crash) is worse than waiting.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "mariage", "-d", "mariage"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi   # a guest list is kilobytes; local-path doesn't enforce the size anyway

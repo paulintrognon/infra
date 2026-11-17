@@ -1,0 +1,25 @@
+# Argo CD Application — mariage.
+#
+# Same shape as the other apps (see plouf-plouf.yaml for each field). One
+# difference: the app's Secrets are created by hand, outside git (see
+# k8s/apps/mariage/README.md). `prune` never touches them, since Argo CD
+# only prunes resources it created itself.
+
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mariage
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/paulintrognon/infra.git
+    targetRevision: main
+    path: k8s/apps/mariage
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true       # delete cluster resources when their manifest is removed from git
+      selfHeal: true    # revert hand-edits so git stays the source of truth
